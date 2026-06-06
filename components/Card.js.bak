@@ -1,0 +1,201 @@
+import React, { useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Animated,
+  StyleSheet,
+} from 'react-native';
+import { isRed } from '../game/logic';
+
+export default function Card({
+  card,
+  faceDown = false,
+  selected = false,
+  zeroed = false,
+  highlighted = false,
+  disabled = false,
+  onPress,
+  size = 'normal', // 'normal' | 'small' | 'large'
+}) {
+  const liftAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (selected) {
+      Animated.spring(liftAnim, { toValue: 1, useNativeDriver: true, tension: 120, friction: 8 }).start();
+    } else {
+      Animated.spring(liftAnim, { toValue: 0, useNativeDriver: true, tension: 120, friction: 8 }).start();
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (highlighted && !faceDown) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1, duration: 700, useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 700, useNativeDriver: false }),
+        ])
+      ).start();
+    } else {
+      glowAnim.setValue(0);
+    }
+  }, [highlighted, faceDown]);
+
+  const translateY = liftAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
+  const borderColor = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(68,170,238,0.4)', 'rgba(68,170,238,1)'],
+  });
+
+  const dims = size === 'small'
+    ? { width: 38, height: 56 }
+    : size === 'large'
+    ? { width: 60, height: 88 }
+    : { width: 48, height: 70 };
+
+  const fontSize = size === 'small' ? 9 : size === 'large' ? 13 : 11;
+  const suitSize = size === 'small' ? 14 : size === 'large' ? 22 : 18;
+
+  if (faceDown) {
+    return (
+      <View style={[styles.cardBase, dims, styles.faceDown, disabled && styles.disabled]}>
+        <View style={styles.faceDownPattern} />
+      </View>
+    );
+  }
+
+  const red = isRed(card.suit);
+  const textColor = red ? '#c0392b' : '#1a1a2e';
+
+  const borderStyle = selected
+    ? { borderColor: '#f6d43a', borderWidth: 2.5 }
+    : zeroed
+    ? { borderColor: '#4ae', borderWidth: 2 }
+    : { borderColor: 'rgba(0,0,0,0.15)', borderWidth: 1 };
+
+  return (
+    <Animated.View style={{ transform: [{ translateY }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled || !onPress}
+        activeOpacity={0.85}
+      >
+        <Animated.View
+          style={[
+            styles.cardBase,
+            dims,
+            styles.faceUp,
+            borderStyle,
+            zeroed && highlighted && { borderColor: borderColor, borderWidth: 2 },
+            disabled && !selected && styles.disabled,
+          ]}
+        >
+          {/* Top-left label */}
+          <View style={styles.cornerTop}>
+            <Text style={[styles.rankText, { color: textColor, fontSize }]}>{card.rank}</Text>
+            <Text style={[styles.suitSmall, { color: textColor, fontSize: fontSize - 1 }]}>{card.suit}</Text>
+          </View>
+
+          {/* Center suit */}
+          <Text style={[styles.centerSuit, { color: textColor, fontSize: suitSize }]}>
+            {card.suit}
+          </Text>
+
+          {/* Bottom-right label (rotated) */}
+          <View style={[styles.cornerBottom]}>
+            <Text style={[styles.rankText, { color: textColor, fontSize, transform: [{ rotate: '180deg' }] }]}>
+              {card.rank}
+            </Text>
+            <Text style={[styles.suitSmall, { color: textColor, fontSize: fontSize - 1, transform: [{ rotate: '180deg' }] }]}>
+              {card.suit}
+            </Text>
+          </View>
+
+          {/* Zero badge */}
+          {zeroed && (
+            <View style={styles.zeroBadge}>
+              <Text style={styles.zeroBadgeText}>0</Text>
+            </View>
+          )}
+        </Animated.View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  cardBase: {
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 2,
+  },
+  faceUp: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  faceDown: {
+    backgroundColor: '#1a3a8f',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  faceDownPattern: {
+    position: 'absolute',
+    top: 4, left: 4, right: 4, bottom: 4,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  disabled: {
+    opacity: 0.65,
+  },
+  cornerTop: {
+    position: 'absolute',
+    top: 3,
+    left: 4,
+    alignItems: 'center',
+  },
+  cornerBottom: {
+    position: 'absolute',
+    bottom: 3,
+    right: 4,
+    alignItems: 'center',
+  },
+  rankText: {
+    fontWeight: 'bold',
+    lineHeight: 13,
+  },
+  suitSmall: {
+    lineHeight: 11,
+  },
+  centerSuit: {
+    fontWeight: '400',
+  },
+  zeroBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#4ae',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zeroBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+});

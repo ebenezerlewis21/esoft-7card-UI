@@ -1,0 +1,464 @@
+import React, { useState, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  SafeAreaView,
+  StatusBar,
+} from 'react-native';
+import {
+  makeDeck,
+  shuffle,
+  calcHandScore,
+  findZeroCards,
+  aiDecide,
+  aiDecideSwap,
+  aiShouldStop,
+} from '../game/logic';
+import PlayerHand from '../components/PlayerHand';
+import CenterZone from '../components/CenterZone';
+import ActionBar from '../components/ActionBar';
+import ResultModal from '../components/ResultModal';
+
+// ── Initial state ─────────────────────────────────────────────────────────────
+function createInitialState() {
+  const deck = shuffle(makeDeck());
+  const players = [
+    { name: 'You', cards: deck.splice(0, 7), isHuman: true },
+    { name: 'Player 2', cards: deck.splice(0, 7), isHuman: false },
+    { name: 'Player 3', cards: deck.splice(0, 7), isHuman: false },
+  ];
+  // Flip one card to start the discard pile
+  const discard = [deck.pop()];
+  return {
+    deck,
+    discard,
+    players,
+    turn: 0,          // 0 = human, 1-2 = AI
+    phase: 'action',  // 'action' | 'drawn'
+    drawnCard: null,
+    drawnFrom: null,
+    selectedHandIdx: null,
+    message: 'Your turn! Draw from the deck or take the discard.',
+    gameOver: false,
+    aiThinking: false,
+  };
+}
+
+export default function GameScreen() {
+  const [state, setState] = useState(createInitialState);
+  const aiTimerRef = useRef(null);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const update = useCallback((patch) => {
+    setState(prev => ({ ...prev, ...patch }));
+  }, []);
+
+  const endGame = useCallback((message) => {
+    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    setState(prev => ({ ...prev, gameOver: true, message, aiThinking: false }));
+  }, []);
+
+  // ── Turn sequencing ───────────────────────────────────────────────────────
+  const advanceTurn = useCallback((currentState) => {
+    const nextTurn = (currentState.turn + 1) % 3;
+
+    if (currentState.deck.length === 0) {
+      endGame('Deck is empty — game over!');
+      return;
+    }
+
+    if (nextTurn === 0) {
+      // Human's turn
+      setState(prev => ({
+        ...prev,
+        turn: 0,
+        phase: 'action',
+        message: 'Your turn! Draw from the deck or take the discard.',
+        aiThinking: false,
+      }));
+    } else {
+      // AI turn
+      setState(prev => ({
+        ...prev,
+        turn: nextTurn,
+        aiThinking: true,
+        message: `${currentState.players[nextTurn].name} is thinking…`,
+      }));
+      aiTimerRef.current = setTimeout(() => runAiTurn(nextTurn), 1300);
+    }
+  }, []);
+
+  const runAiTurn = useCallback((pidx) => {
+    setState(prev => {
+      if (prev.gameOver) return prev;
+
+      const player = prev.players[pidx];
+      const discardTop = prev.discard.length > 0 ? prev.discard[prev.discard.length - 1] : null;
+      const decision = aiDecide(player.cards, discardTop);
+
+      let newDeck = prev.deck.slice();
+      let newDiscard = prev.discard.slice();
+      const newPlayers = prev.players.map(p => ({ ...p, cards: p.cards.slice() }));
+      let message = '';
+
+      if (decision.action === 'takeDiscard') {
+        const taken = newDiscard.pop();
+        const discarded = newPlayers[pidx].cards.splice(decision.swapIdx, 1, taken)[0];
+        newDiscard.push(discarded);
+        message = `${player.name} took the discard and swapped a card.`;
+      } else {
+        // Draw from deck
+        if (newDeck.length === 0) {
+          return { ...prev, gameOver: true, message: 'Deck is empty — game over!', aiThinking: false };
+        }
+        const drawn = newDeck.pop();
+        const swapIdx = aiDecideSwap(newPlayers[pidx].cards, drawn);
+        if (swapIdx >= 0) {
+          const discarded = newPlayers[pidx].cards.splice(swapIdx, 1, drawn)[0];
+          newDiscard.push(discarded);
+          message = `${player.name} drew and swapped a card.`;
+        } else {
+          newDiscard.push(drawn);
+          message = `${player.name} drew and kept their hand.`;
+        }
+      }
+
+      // AI stop decision
+      const newScore = calcHandScore(newPlayers[pidx].cards);
+      if (aiShouldStop(newPlayers[pidx].cards)) {
+        return {
+          ...prev,
+          deck: newDeck,
+          discard: newDiscard,
+          players: newPlayers,
+          gameOver: true,
+          aiThinking: false,
+          message: `${player.name} stopped the game with a score of ${newScore}!`,
+        };
+      }
+
+      // Set up next turn
+      const nextTurn = (pidx + 1) % 3;
+      const isNextHuman = nextTurn === 0;
+
+      if (newDeck.length === 0) {
+        return {
+          ...prev,
+          deck: newDeck,
+          discard: newDiscard,
+          players: newPlayers,
+          gameOver: true,
+          aiThinking: false,
+          message: 'Deck is empty — game over!',
+        };
+      }
+
+      const nextState = {
+        ...prev,
+        deck: newDeck,
+        discard: newDiscard,
+        players: newPlayers,
+        turn: nextTurn,
+        phase: 'action',
+        message: isNextHuman
+          ? `${message} Your turn!`
+          : `${message} ${prev.players[nextTurn].name} is thinking…`,
+        aiThinking: !isNextHuman,
+      };
+
+      if (!isNextHuman) {
+        aiTimerRef.current = setTimeout(() => runAiTurn(nextTurn), 1300);
+      }
+
+      return nextState;
+    });
+  }, []);
+
+  // ── Human actions ─────────────────────────────────────────────────────────
+  const handleDrawDeck = useCallback(() => {
+    setState(prev => {
+      if (prev.phase !== 'action' || prev.turn !== 0 || prev.deck.length === 0) return prev;
+      const newDeck = prev.deck.slice();
+      const drawn = newDeck.pop();
+      return {
+        ...prev,
+        deck: newDeck,
+        drawnCard: drawn,
+        drawnFrom: 'deck',
+        phase: 'drawn',
+        selectedHandIdx: null,
+        message: 'Card drawn! Tap one of your cards to select it for swapping, or keep your hand.',
+      };
+    });
+  }, []);
+
+  const handleTakeDiscard = useCallback(() => {
+    setState(prev => {
+      if (prev.phase !== 'action' || prev.turn !== 0 || prev.discard.length === 0) return prev;
+      const newDiscard = prev.discard.slice();
+      const taken = newDiscard.pop();
+      return {
+        ...prev,
+        discard: newDiscard,
+        drawnCard: taken,
+        drawnFrom: 'discard',
+        phase: 'drawn',
+        selectedHandIdx: null,
+        message: 'You took the discard! Tap one of your cards to swap.',
+      };
+    });
+  }, []);
+
+  const handleSelectCard = useCallback((idx) => {
+    setState(prev => {
+      if (prev.phase !== 'drawn' || prev.turn !== 0) return prev;
+      return {
+        ...prev,
+        selectedHandIdx: prev.selectedHandIdx === idx ? null : idx,
+      };
+    });
+  }, []);
+
+  const handleSwap = useCallback(() => {
+    setState(prev => {
+      if (prev.selectedHandIdx === null || !prev.drawnCard) return prev;
+      const newPlayers = prev.players.map(p => ({ ...p, cards: p.cards.slice() }));
+      const discarded = newPlayers[0].cards.splice(prev.selectedHandIdx, 1, prev.drawnCard)[0];
+      const newDiscard = [...prev.discard, discarded];
+
+      const nextState = {
+        ...prev,
+        players: newPlayers,
+        discard: newDiscard,
+        drawnCard: null,
+        drawnFrom: null,
+        phase: 'action',
+        selectedHandIdx: null,
+        message: 'Swapped! Next player…',
+      };
+
+      // Trigger next turn after state is set
+      if (nextState.deck.length === 0) {
+        return { ...nextState, gameOver: true, message: 'Deck is empty — game over!' };
+      }
+
+      // Schedule AI turn
+      aiTimerRef.current = setTimeout(() => runAiTurn(1), 600);
+      return { ...nextState, turn: 1, aiThinking: true, message: 'Player 2 is thinking…' };
+    });
+  }, [runAiTurn]);
+
+  const handleKeep = useCallback(() => {
+    setState(prev => {
+      if (!prev.drawnCard) return prev;
+      const newDiscard = [...prev.discard, prev.drawnCard];
+      const nextState = {
+        ...prev,
+        discard: newDiscard,
+        drawnCard: null,
+        drawnFrom: null,
+        phase: 'action',
+        selectedHandIdx: null,
+        message: 'Kept your hand. Next player…',
+      };
+
+      if (nextState.deck.length === 0) {
+        return { ...nextState, gameOver: true, message: 'Deck is empty — game over!' };
+      }
+
+      aiTimerRef.current = setTimeout(() => runAiTurn(1), 600);
+      return { ...nextState, turn: 1, aiThinking: true, message: 'Player 2 is thinking…' };
+    });
+  }, [runAiTurn]);
+
+  const handleStop = useCallback(() => {
+    endGame('You stopped the game!');
+  }, [endGame]);
+
+  const handleNewGame = useCallback(() => {
+    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    setState(createInitialState());
+  }, []);
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const { players, turn, phase, drawnCard, drawnFrom, selectedHandIdx, message, gameOver, deck, discard, aiThinking } = state;
+  const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
+  const isMyTurn = turn === 0 && !gameOver;
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor="#1a5c2e" />
+
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>7-Card Lowball</Text>
+          <View style={styles.deckCounter}>
+            <Text style={styles.deckCounterText}>{deck.length} cards left</Text>
+          </View>
+        </View>
+
+        {/* AI Players (top) */}
+        <PlayerHand
+          player={players[1]}
+          isCurrentTurn={turn === 1 && !gameOver}
+          showCards={gameOver}
+          score={calcHandScore(players[1].cards)}
+          gameOver={gameOver}
+        />
+
+        <PlayerHand
+          player={players[2]}
+          isCurrentTurn={turn === 2 && !gameOver}
+          showCards={gameOver}
+          score={calcHandScore(players[2].cards)}
+          gameOver={gameOver}
+        />
+
+        {/* Center Zone */}
+        <CenterZone
+          deckCount={deck.length}
+          discardTop={discardTop}
+          drawnCard={isMyTurn && phase === 'drawn' ? drawnCard : null}
+          drawnFrom={drawnFrom}
+          canDrawDeck={isMyTurn && phase === 'action' && deck.length > 0}
+          canTakeDiscard={isMyTurn && phase === 'action' && discard.length > 0}
+          onDrawDeck={handleDrawDeck}
+          onTakeDiscard={handleTakeDiscard}
+        />
+
+        {/* Status bar */}
+        <View style={styles.statusBar}>
+          {isMyTurn && <View style={styles.statusDot} />}
+          <Text style={styles.statusText} numberOfLines={2}>{message}</Text>
+        </View>
+
+        {/* Action buttons */}
+        <ActionBar
+          phase={phase}
+          isMyTurn={isMyTurn}
+          selectedIdx={selectedHandIdx}
+          gameOver={gameOver}
+          onSwap={handleSwap}
+          onKeep={handleKeep}
+          onStop={handleStop}
+          onNewGame={handleNewGame}
+        />
+
+        {/* Human hand (bottom) */}
+        <PlayerHand
+          player={players[0]}
+          isHuman
+          isCurrentTurn={isMyTurn}
+          showCards
+          phase={phase}
+          selectedIdx={selectedHandIdx}
+          onCardPress={handleSelectCard}
+          score={calcHandScore(players[0].cards)}
+          gameOver={gameOver}
+        />
+
+        {/* Legend */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#4ae' }]} />
+            <Text style={styles.legendText}>Zero-value combo</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#f6d43a' }]} />
+            <Text style={styles.legendText}>Selected card</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Result modal */}
+      <ResultModal
+        visible={gameOver}
+        players={players}
+        stopMessage={message}
+        onNewGame={handleNewGame}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: '#1a5c2e',
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  headerTitle: {
+    color: '#f6d43a',
+    fontSize: 18,
+    fontWeight: 'bold',
+    fontFamily: 'Georgia',
+    letterSpacing: 0.5,
+  },
+  deckCounter: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  deckCounterText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginHorizontal: 4,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#f6d43a',
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 12,
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    paddingBottom: 4,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 10,
+  },
+});

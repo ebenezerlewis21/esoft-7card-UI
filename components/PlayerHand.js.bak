@@ -1,0 +1,147 @@
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import Card from './Card';
+import { findZeroCards } from '../game/logic';
+
+export default function PlayerHand({
+  player,
+  isHuman = false,
+  isCurrentTurn = false,
+  showCards = false,          // reveal face-up (used for AI at game end)
+  phase = 'action',           // 'action' | 'drawn'
+  selectedIdx = null,
+  onCardPress,
+  score,
+  gameOver = false,
+}) {
+  const zeros = (showCards || isHuman) ? findZeroCards(player.cards) : new Set();
+  const canSelect = isHuman && phase === 'drawn' && !gameOver;
+
+  return (
+    <View style={[styles.container, isCurrentTurn && styles.activeBorder]}>
+      <View style={styles.header}>
+        <View style={styles.nameRow}>
+          {isCurrentTurn && !gameOver && <View style={styles.turnDot} />}
+          <Text style={styles.name}>{player.name}</Text>
+          {isCurrentTurn && !gameOver && !isHuman && (
+            <Text style={styles.thinking}> thinking…</Text>
+          )}
+        </View>
+        <View style={styles.scorePill}>
+          {(isHuman || gameOver) ? (
+            <>
+              <Text style={styles.scoreText}>Score: {score}</Text>
+              {zeros.size > 0 && (
+                <View style={styles.comboBadge}>
+                  <Text style={styles.comboText}>COMBO</Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={styles.scoreText}>{player.cards.length} cards</Text>
+          )}
+        </View>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.cardsRow}
+      >
+        {player.cards.map((card, i) => {
+          const faceDown = !isHuman && !showCards;
+          const zeroed = zeros.has(i);
+          const selected = isHuman && selectedIdx === i;
+
+          return (
+            <Card
+              key={`${card.id}-${i}`}
+              card={card}
+              faceDown={faceDown}
+              selected={selected}
+              zeroed={zeroed}
+              highlighted={zeroed}
+              disabled={!canSelect}
+              onPress={canSelect ? () => onCardPress(i) : undefined}
+              size="normal"
+            />
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginVertical: 3,
+  },
+  activeBorder: {
+    borderColor: '#f6d43a',
+    borderWidth: 1.5,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  turnDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f6d43a',
+  },
+  name: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  thinking: {
+    color: '#f6d43a',
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+  scorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    gap: 6,
+  },
+  scoreText: {
+    color: '#fff',
+    fontSize: 12,
+  },
+  comboBadge: {
+    backgroundColor: 'rgba(246,212,58,0.2)',
+    borderWidth: 1,
+    borderColor: '#f6d43a',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  comboText: {
+    color: '#f6d43a',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  cardsRow: {
+    flexDirection: 'row',
+    paddingVertical: 4,
+    gap: 2,
+  },
+});

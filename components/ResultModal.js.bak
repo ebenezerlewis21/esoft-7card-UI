@@ -1,0 +1,154 @@
+import React from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import { calcHandScore } from '../game/logic';
+
+export default function ResultModal({ visible, players, stopMessage, onNewGame }) {
+  if (!players) return null;
+
+  const scores = players
+    .map((p, i) => ({ name: p.name, score: calcHandScore(p.cards), idx: i }))
+    .sort((a, b) => a.score - b.score);
+
+  const winner = scores[0];
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.overlay}>
+        <View style={styles.box}>
+          <Text style={styles.title}>🃏 Game Over!</Text>
+          <Text style={styles.subtitle}>{stopMessage}</Text>
+
+          <View style={styles.divider} />
+
+          {scores.map((s, i) => (
+            <View key={s.name} style={styles.row}>
+              <Text style={[styles.playerName, i === 0 && styles.winner]}>
+                {i === 0 ? '🏆  ' : '     '}{s.name}
+              </Text>
+              <View style={[styles.scoreBadge, i === 0 && styles.scoreBadgeWinner]}>
+                <Text style={[styles.scoreVal, i === 0 && styles.winner]}>
+                  {s.score} pts
+                </Text>
+              </View>
+            </View>
+          ))}
+
+          <View style={styles.divider} />
+
+          <Text style={styles.winnerLine}>
+            {winner.name} wins with {winner.score} points!
+          </Text>
+
+          <TouchableOpacity
+            onPress={onNewGame}
+            activeOpacity={0.85}
+            style={styles.newGameBtn}
+          >
+            <Text style={styles.newGameText}>Play Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  box: {
+    backgroundColor: '#1a5c2e',
+    borderRadius: 18,
+    borderWidth: 3,
+    borderColor: '#f6d43a',
+    padding: 28,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#f6d43a',
+    marginBottom: 6,
+  },
+  subtitle: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: '100%',
+    marginVertical: 14,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 5,
+  },
+  playerName: {
+    color: '#fff',
+    fontSize: 15,
+    flex: 1,
+  },
+  winner: {
+    color: '#f6d43a',
+    fontWeight: 'bold',
+  },
+  scoreBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  scoreBadgeWinner: {
+    backgroundColor: 'rgba(246,212,58,0.15)',
+    borderWidth: 1,
+    borderColor: '#f6d43a',
+  },
+  scoreVal: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  winnerLine: {
+    color: '#f6d43a',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  newGameBtn: {
+    marginTop: 10,
+    backgroundColor: '#f6d43a',
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    borderRadius: 24,
+  },
+  newGameText: {
+    color: '#1a1a2e',
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+});

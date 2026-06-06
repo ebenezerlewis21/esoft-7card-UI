@@ -1,0 +1,707 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import * as ScreenOrientation from "expo-screen-orientation";
+import React from "react";
+import {
+  Modal,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Text3D from "../components/Text3D";
+import { BACKGROUNDS } from "../constants/backgrounds";
+import { CARD_BACKS } from "../constants/cardbacks";
+import {
+  getActiveBackgroundId,
+  getActiveCardBackId,
+  getOwnedBackgroundIds,
+  getOwnedCardBackIds,
+  initializeProfileSettings,
+  initializeSoundSettings,
+  isSoundEnabled,
+  setActiveBackgroundId,
+  setActiveCardBackId,
+  setSoundEnabled,
+  subscribeBackgroundSettings,
+  subscribeCardBackSettings,
+  subscribeSoundEnabled,
+} from "../constants/settings";
+
+const PLAYER_PROFILE = {
+  name: "Card Shark",
+  wins: 47,
+  gamesPlayed: 82,
+  rank: "Gold II",
+  coins: 12840,
+};
+
+export default function LobbyScreen(): React.ReactElement {
+  const router = useRouter();
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
+  const [ownedBackgroundIds, setOwnedBackgroundIds] = React.useState(
+    () => new Set(getOwnedBackgroundIds()),
+  );
+  const [ownedCardBackIds, setOwnedCardBackIds] = React.useState(
+    () => new Set(getOwnedCardBackIds()),
+  );
+  const [activeBackgroundId, setActiveBackgroundIdState] = React.useState(
+    getActiveBackgroundId(),
+  );
+  const [activeCardBackId, setActiveCardBackIdState] = React.useState(
+    getActiveCardBackId(),
+  );
+  const winRatio = Math.round(
+    (PLAYER_PROFILE.wins / Math.max(1, PLAYER_PROFILE.gamesPlayed)) * 100,
+  );
+  const coinsDisplay = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      }).format(PLAYER_PROFILE.coins),
+    [],
+  );
+
+  React.useEffect(() => {
+    void ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.PORTRAIT_UP,
+    );
+
+    return () => {
+      void ScreenOrientation.unlockAsync();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeSoundEnabled((enabled) => {
+      setSoundEnabledState(enabled);
+    });
+
+    const unsubscribeBackgrounds = subscribeBackgroundSettings(() => {
+      setOwnedBackgroundIds(new Set(getOwnedBackgroundIds()));
+      setActiveBackgroundIdState(getActiveBackgroundId());
+    });
+
+    const unsubscribeCardBacks = subscribeCardBackSettings(() => {
+      setOwnedCardBackIds(new Set(getOwnedCardBackIds()));
+      setActiveCardBackIdState(getActiveCardBackId());
+    });
+
+    void initializeSoundSettings();
+    void initializeProfileSettings();
+
+    return () => {
+      unsubscribe();
+      unsubscribeBackgrounds();
+      unsubscribeCardBacks();
+    };
+  }, []);
+
+  const activeBackground = React.useMemo(
+    () =>
+      BACKGROUNDS.find((item) => item.id === activeBackgroundId) ??
+      BACKGROUNDS[0],
+    [activeBackgroundId],
+  );
+
+  return (
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: activeBackground.background },
+      ]}
+    >
+      <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.storeButton}
+            activeOpacity={0.85}
+            onPress={() => router.push("./shop")}
+            accessibilityRole="button"
+            accessibilityLabel="Store"
+          >
+            <MaterialCommunityIcons
+              name="store-outline"
+              size={30}
+              color="#ffffff"
+            />
+          </TouchableOpacity>
+
+          <View style={styles.actionStack}>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              activeOpacity={0.85}
+              onPress={() => setSettingsOpen(true)}
+            >
+              <Text3D style={styles.settingsButtonText}>Settings</Text3D>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.infoButton}
+              activeOpacity={0.85}
+              onPress={() => router.push("./info")}
+              accessibilityRole="button"
+              accessibilityLabel="Info"
+            >
+              <MaterialCommunityIcons
+                name="information-outline"
+                size={20}
+                color="#ffffff"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+
+      <View style={styles.panel}>
+        <Text3D style={styles.title}>7-Card Lowball</Text3D>
+        <Text3D style={styles.subtitle}>Choose a mode to start</Text3D>
+
+        <View style={styles.profileCard}>
+          <Text3D style={styles.profileName}>{PLAYER_PROFILE.name}</Text3D>
+
+          <View style={styles.profileStatsGrid}>
+            <View style={styles.statItem}>
+              <Text3D style={styles.statLabel}>Win Ratio</Text3D>
+              <Text3D style={styles.statValue}>{winRatio}%</Text3D>
+            </View>
+
+            <View style={styles.statItem}>
+              <Text3D style={styles.statLabel}>Games</Text3D>
+              <Text3D style={styles.statValue}>
+                {PLAYER_PROFILE.gamesPlayed}
+              </Text3D>
+            </View>
+
+            <View style={styles.statItem}>
+              <Text3D style={styles.statLabel}>Ranked</Text3D>
+              <Text3D style={styles.statValue}>{PLAYER_PROFILE.rank}</Text3D>
+            </View>
+
+            <View style={styles.statItem}>
+              <Text3D style={styles.statLabel}>Coins</Text3D>
+              <View style={styles.coinValueRow}>
+                <MaterialCommunityIcons
+                  name="diamond-stone"
+                  size={16}
+                  color="#f6d43a"
+                  style={styles.coinIcon}
+                />
+                <Text3D style={[styles.statValue, styles.coinValueText]}>
+                  {coinsDisplay}
+                </Text3D>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.actionsOrbit}>
+          <TouchableOpacity
+            style={[styles.diamondButton, styles.playButton, styles.actionTop]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/game")}
+          >
+            <View style={styles.diamondButtonContent}>
+              <Text3D style={[styles.diamondButtonText, styles.playButtonText]}>
+                Play vs Computer
+              </Text3D>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.diamondButton,
+              styles.onlineButton,
+              styles.actionRight,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/under-construction")}
+          >
+            <View style={styles.diamondButtonContent}>
+              <Text3D
+                style={[styles.diamondButtonText, styles.onlineButtonText]}
+              >
+                Quick Match Online
+              </Text3D>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.diamondButton,
+              styles.friendButton,
+              styles.actionBottom,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/under-construction")}
+          >
+            <View style={styles.diamondButtonContent}>
+              <Text3D
+                style={[styles.diamondButtonText, styles.friendButtonText]}
+              >
+                Challenge Friend
+              </Text3D>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.diamondButton,
+              styles.tournamentButton,
+              styles.actionLeft,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/under-construction")}
+          >
+            <View style={styles.diamondButtonContent}>
+              <Text3D
+                style={[styles.diamondButtonText, styles.tournamentButtonText]}
+              >
+                Tournament
+              </Text3D>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <Modal
+        visible={settingsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSettingsOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text3D style={styles.modalTitle}>Settings</Text3D>
+
+            <View style={styles.optionRow}>
+              <Text3D style={styles.optionLabel}>Enable Sound</Text3D>
+              <Switch
+                value={soundEnabled}
+                onValueChange={(value) => {
+                  setSoundEnabledState(value);
+                  setSoundEnabled(value);
+                }}
+                trackColor={{ false: "#6b6b6b", true: "#4caf50" }}
+                thumbColor={soundEnabled ? "#e9ffe9" : "#f2f2f2"}
+              />
+            </View>
+
+            <Text3D style={styles.modalSectionTitle}>Gameboard</Text3D>
+            <View style={styles.backgroundList}>
+              {BACKGROUNDS.filter((background) =>
+                ownedBackgroundIds.has(background.id),
+              ).map((background) => {
+                const owned = ownedBackgroundIds.has(background.id);
+                const active = activeBackgroundId === background.id;
+
+                return (
+                  <TouchableOpacity
+                    key={background.id}
+                    style={[
+                      styles.backgroundRow,
+                      { borderColor: background.accent },
+                      active && styles.backgroundRowActive,
+                    ]}
+                    activeOpacity={0.85}
+                    disabled={!owned}
+                    onPress={() => setActiveBackgroundId(background.id)}
+                  >
+                    <View
+                      style={[
+                        styles.backgroundSwatch,
+                        { backgroundColor: background.background },
+                      ]}
+                    />
+
+                    <View style={styles.backgroundMeta}>
+                      <Text3D style={styles.backgroundName}>
+                        {background.name}
+                      </Text3D>
+                      <Text3D style={styles.backgroundStatus}>
+                        {owned ? (active ? "Selected" : "Owned") : "Locked"}
+                      </Text3D>
+                    </View>
+
+                    <MaterialCommunityIcons
+                      name={active ? "check-circle" : "circle-outline"}
+                      size={20}
+                      color={
+                        owned ? background.accent : "rgba(255,255,255,0.35)"
+                      }
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text3D style={styles.modalSectionTitle}>Card</Text3D>
+            <View style={styles.backgroundList}>
+              {CARD_BACKS.filter((cardBack) =>
+                ownedCardBackIds.has(cardBack.id),
+              ).map((cardBack) => {
+                const active = activeCardBackId === cardBack.id;
+
+                return (
+                  <TouchableOpacity
+                    key={cardBack.id}
+                    style={[
+                      styles.backgroundRow,
+                      { borderColor: cardBack.accent },
+                      active && styles.backgroundRowActive,
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => setActiveCardBackId(cardBack.id)}
+                  >
+                    <View
+                      style={[
+                        styles.backgroundSwatch,
+                        { backgroundColor: cardBack.color },
+                      ]}
+                    />
+
+                    <View style={styles.backgroundMeta}>
+                      <Text3D style={styles.backgroundName}>
+                        {cardBack.name}
+                      </Text3D>
+                      <Text3D style={styles.backgroundStatus}>
+                        {active ? "Selected" : "Owned"}
+                      </Text3D>
+                    </View>
+
+                    <MaterialCommunityIcons
+                      name={active ? "check-circle" : "circle-outline"}
+                      size={20}
+                      color={cardBack.accent}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              activeOpacity={0.85}
+              onPress={() => setSettingsOpen(false)}
+            >
+              <Text3D style={styles.modalCloseText}>Done</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1a5c2e",
+    padding: 20,
+  },
+  topSafeArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    gap: 8,
+  },
+  actionStack: {
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  storeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderColor: "rgba(255,255,255,0.26)",
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsButton: {
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderColor: "rgba(255,255,255,0.26)",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  settingsButtonText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  modalSectionTitle: {
+    color: "#fdf0b4",
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  infoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderColor: "rgba(255,255,255,0.26)",
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  panel: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    gap: 8,
+  },
+  title: {
+    color: "#f6d43a",
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: "bold",
+    letterSpacing: 0.8,
+    textAlign: "center",
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  subtitle: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  profileCard: {
+    width: "100%",
+    borderRadius: 14,
+    backgroundColor: "rgba(7, 23, 14, 0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(246, 212, 58, 0.35)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    gap: 10,
+  },
+  profileName: {
+    color: "#fdf0b4",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
+  profileStatsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    rowGap: 10,
+  },
+  statItem: {
+    width: "50%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  statLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  statValue: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  coinValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coinIcon: {
+    marginRight: 4,
+  },
+  coinValueText: {
+    color: "#ffe89a",
+  },
+  actionsOrbit: {
+    width: 300,
+    height: 300,
+    marginTop: 6,
+    marginBottom: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  diamondButton: {
+    position: "absolute",
+    width: 108,
+    height: 108,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: "45deg" }],
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  diamondButtonContent: {
+    transform: [{ rotate: "-45deg" }],
+    width: 86,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  diamondButtonText: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: 0.2,
+    lineHeight: 14,
+  },
+  actionTop: {
+    top: 0,
+    left: "50%",
+    marginLeft: -54,
+  },
+  actionRight: {
+    right: 0,
+    top: "50%",
+    marginTop: -54,
+  },
+  actionBottom: {
+    bottom: 0,
+    left: "50%",
+    marginLeft: -54,
+  },
+  actionLeft: {
+    left: 0,
+    top: "50%",
+    marginTop: -54,
+  },
+  playButton: {
+    backgroundColor: "#f6d43a",
+  },
+  playButtonText: {
+    color: "#1a1a2e",
+  },
+  onlineButton: {
+    backgroundColor: "#0f6bd8",
+  },
+  onlineButtonText: {
+    color: "#ffffff",
+  },
+  friendButton: {
+    backgroundColor: "#7a2bbf",
+  },
+  friendButtonText: {
+    color: "#ffffff",
+  },
+  tournamentButton: {
+    backgroundColor: "#d35400",
+  },
+  tournamentButtonText: {
+    color: "#ffffff",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 18,
+    backgroundColor: "#173f2f",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  modalTitle: {
+    color: "#f6d43a",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+    gap: 12,
+  },
+  optionLabel: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  backgroundList: {
+    gap: 10,
+    marginBottom: 18,
+  },
+  backgroundRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  backgroundRowActive: {
+    backgroundColor: "rgba(246, 212, 58, 0.16)",
+  },
+  backgroundSwatch: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+  },
+  backgroundMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  backgroundName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  backgroundStatus: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+  },
+  modalCloseBtn: {
+    borderRadius: 16,
+    backgroundColor: "#f6d43a",
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  modalCloseText: {
+    color: "#1a1a2e",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+});

@@ -1,0 +1,153 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Card from './Card';
+
+export default function CenterZone({
+  deckCount,
+  discardTop,
+  drawnCard,
+  drawnFrom,
+  canDrawDeck,
+  canTakeDiscard,
+  onDrawDeck,
+  onTakeDiscard,
+}) {
+  return (
+    <View style={styles.zone}>
+      {/* Deck */}
+      <View style={styles.pileArea}>
+        <Text style={styles.label}>DECK</Text>
+        <TouchableOpacity
+          onPress={onDrawDeck}
+          disabled={!canDrawDeck}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.deckCard, !canDrawDeck && styles.dimmed]}>
+            {deckCount > 0 ? (
+              <>
+                <View style={styles.deckPattern} />
+                <Text style={styles.deckSymbol}>🂠</Text>
+              </>
+            ) : (
+              <Text style={styles.emptyText}>Empty</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+        <Text style={styles.count}>{deckCount} left</Text>
+      </View>
+
+      {/* Drawn card (human's drawn card awaiting decision) */}
+      {drawnCard ? (
+        <View style={styles.drawnArea}>
+          <Text style={styles.label}>DRAWN</Text>
+          <Card card={drawnCard} selected size="large" />
+          <Text style={styles.drawnHint}>← select to swap</Text>
+        </View>
+      ) : (
+        <View style={styles.spacer} />
+      )}
+
+      {/* Discard pile */}
+      <View style={styles.pileArea}>
+        <Text style={styles.label}>DISCARD</Text>
+        {discardTop ? (
+          <Card
+            card={discardTop}
+            highlighted={canTakeDiscard}
+            disabled={!canTakeDiscard}
+            onPress={canTakeDiscard ? onTakeDiscard : undefined}
+            size="large"
+          />
+        ) : (
+          <View style={styles.emptyPile}>
+            <Text style={styles.emptyText}>—</Text>
+          </View>
+        )}
+        <Text style={styles.count}>tap to take</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  zone: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginVertical: 3,
+  },
+  pileArea: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  drawnArea: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  label: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    fontWeight: '600',
+  },
+  count: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 9,
+  },
+  deckCard: {
+    width: 56,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#1a3a8f',
+    borderWidth: 2.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6,
+    overflow: 'hidden',
+  },
+  deckPattern: {
+    position: 'absolute',
+    top: 5, left: 5, right: 5, bottom: 5,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  deckSymbol: {
+    fontSize: 24,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  dimmed: {
+    opacity: 0.55,
+  },
+  emptyPile: {
+    width: 56,
+    height: 80,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+  },
+  spacer: {
+    width: 60,
+  },
+  drawnHint: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 9,
+  },
+});

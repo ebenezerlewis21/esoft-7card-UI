@@ -1,0 +1,183 @@
+// ─── Constants ────────────────────────────────────────────────────────────────
+export const SUITS = ['♠', '♥', '♦', '♣'];
+export const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+export const RANK_VAL = {
+  A: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7,
+  8: 8, 9: 9, 10: 10, J: 11, Q: 12, K: 13,
+};
+
+export function isRed(suit) {
+  return suit === '♥' || suit === '♦';
+}
+
+export function cardRankIdx(rank) {
+  return RANKS.indexOf(rank);
+}
+
+// ─── Deck helpers ─────────────────────────────────────────────────────────────
+export function makeDeck() {
+  const deck = [];
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      deck.push({ suit, rank, id: `${rank}${suit}` });
+    }
+  }
+  return deck;
+}
+
+export function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ─── Scoring ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns a Set of hand indices whose value is reduced to 0 by combos:
+ *   • 3+ cards of same rank  → all zero
+ *   • 3–4 consecutive cards of same suit (straight flush) → all zero
+ *   • Ace counts as low (1) or high (14) for straights, whichever helps
+ */
+export function findZeroCards(hand) {
+  const zeros = new Set();
+  const n = hand.length;
+
+  // ── Same-rank groups ──
+  const rankGroups = {};
+  for (let i = 0; i < n; i++) {
+    const r = hand[i].rank;
+    if (!rankGroups[r]) rankGroups[r] = [];
+    rankGroups[r].push(i);
+  }
+  for (const r in rankGroups) {
+    if (rankGroups[r].length >= 3) {
+      rankGroups[r].forEach(i => zeros.add(i));
+    }
+  }
+
+  // ── Straight flushes (3–4 cards, same suit, consecutive) ──
+  const suitGroups = {};
+  for (let i = 0; i < n; i++) {
+    const s = hand[i].suit;
+    if (!suitGroups[s]) suitGroups[s] = [];
+    suitGroups[s].push(i);
+  }
+
+  for (const suit in suitGroups) {
+    const idxs = suitGroups[suit];
+    // Sort by rank index (Ace low = 0)
+    const sorted = idxs
+      .slice()
+      .sort((a, b) => cardRankIdx(hand[a].rank) - cardRankIdx(hand[b].rank));
+
+    // Try all windows of length 3 and 4
+    for (let len = 4; len >= 3; len--) {
+      for (let start = 0; start <= sorted.length - len; start++) {
+        const slice = sorted.slice(start, start + len);
+
+        // Ace-low check
+        let consecLow = true;
+        for (let k = 1; k < slice.length; k++) {
+          if (
+            cardRankIdx(hand[slice[k]].rank) !==
+            cardRankIdx(hand[slice[k - 1]].rank) + 1
+          ) {
+            consecLow = false;
+            break;
+          }
+        }
+        if (consecLow) {
+          slice.forEach(i => zeros.add(i));
+          continue;
+        }
+
+        // Ace-high check (Ace = rank index 13)
+        const ranks = slice.map(i =>
+          hand[i].rank === 'A' ? 13 : cardRankIdx(hand[i].rank)
+        ).sort((a, b) => a - b);
+
+        let consecHigh = true;
+        for (let k = 1; k < ranks.length; k++) {
+          if (ranks[k] !== ranks[k - 1] + 1) { consecHigh = false; break; }
+        }
+        if (consecHigh) {
+          slice.forEach(i => zeros.add(i));
+        }
+      }
+    }
+  }
+
+  return zeros;
+}
+
+/**
+ * Calculate hand score:
+ *   - Zero-combo cards count 0
+ *   - Ace counts as 1 (Ace-as-14 only matters for straight detection above)
+ */
+export function calcHandScore(hand) {
+  if (!hand.length) return 0;
+  const zeros = findZeroCards(hand);
+  return hand.reduce((sum, card, i) => {
+    if (zeros.has(i)) return sum;
+    return sum + (card.rank === 'A' ? 1 : RANK_VAL[card.rank] || 0);
+  }, 0);
+}
+
+// ─── AI ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Decide AI action. Returns an object describing what to do.
+ * Mutates nothing – caller applies the action to state.
+ */
+export function aiDecide(hand, discardTop) {
+  const currentScore = calcHandScore(hand);
+
+  // Try taking the discard
+  if (discardTop) {
+    let bestGain = 0;
+    let bestIdx = -1;
+    for (let i = 0; i < hand.length; i++) {
+      const trial = hand.slice();
+      trial[i] = discardTop;
+      const trialScore = calcHandScore(trial);
+      const gain = currentScore - trialScore;
+      if (gain > bestGain) { bestGain = gain; bestIdx = i; }
+    }
+    if (bestIdx >= 0) {
+      return { action: 'takeDiscard', swapIdx: bestIdx };
+    }
+  }
+
+  return { action: 'drawDeck' };
+}
+
+/**
+ * After drawing from deck, decide whether to swap.
+ */
+export function aiDecideSwap(hand, drawnCard) {
+  const currentScore = calcHandScore(hand);
+  let bestGain = 0;
+  let bestIdx = -1;
+  for (let i = 0; i < hand.length; i++) {
+    const trial = hand.slice();
+    trial[i] = drawnCard;
+    const trialScore = calcHandScore(trial);
+    const gain = currentScore - trialScore;
+    if (gain > bestGain) { bestGain = gain; bestIdx = i; }
+  }
+  return bestIdx; // -1 means keep hand
+}
+
+/**
+ * Should AI stop the game?
+ */
+export function aiShouldStop(hand) {
+  const score = calcHandScore(hand);
+  // Stop if score is very low, with some randomness
+  return score <= 7 && Math.random() < 0.45;
+}

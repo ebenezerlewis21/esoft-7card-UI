@@ -1,0 +1,93 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+
+function Btn({ label, onPress, disabled, color, textColor = '#fff' }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.8}
+      style={[
+        styles.btn,
+        { backgroundColor: color },
+        disabled && styles.btnDisabled,
+      ]}
+    >
+      <Text style={[styles.btnText, { color: textColor }, disabled && styles.btnTextDisabled]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+export default function ActionBar({
+  phase,          // 'action' | 'drawn'
+  isMyTurn,
+  selectedIdx,
+  gameOver,
+  onSwap,
+  onKeep,
+  onStop,
+  onNewGame,
+}) {
+  if (gameOver) {
+    return (
+      <View style={styles.bar}>
+        <Btn label="🃏  New Game" onPress={onNewGame} color="#f6d43a" textColor="#1a1a2e" />
+      </View>
+    );
+  }
+
+  if (!isMyTurn) return null;
+
+  return (
+    <View style={styles.bar}>
+      {phase === 'drawn' && (
+        <>
+          <Btn
+            label="↔  Swap Card"
+            onPress={onSwap}
+            disabled={selectedIdx === null}
+            color="#27ae60"
+          />
+          <Btn
+            label="✓  Keep Hand"
+            onPress={onKeep}
+            color="#e67e22"
+          />
+        </>
+      )}
+      <Btn label="🛑  Stop Game" onPress={onStop} color="#c0392b" />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  btn: {
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  btnDisabled: {
+    opacity: 0.4,
+  },
+  btnText: {
+    fontWeight: 'bold',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  btnTextDisabled: {},
+});
