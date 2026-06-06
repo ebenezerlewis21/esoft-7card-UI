@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
@@ -41,3 +42,7 @@ app-example
 # generated native folders
 /ios
 /android
+=======
+node_modules/
+package-lock.json
+>>>>>>> b2472038c19a5492e69f09f1c15703988700bb3e
