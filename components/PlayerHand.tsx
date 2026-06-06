@@ -62,7 +62,6 @@ export default function PlayerHand({
   cardBackColor = "#1a3a8f",
 }: PlayerHandProps): React.ReactElement {
   const skeletonEnabled = Feature.skeleton.enabled();
-  const dragDropEnabled = Feature.dragDrop.enabled();
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStateRef = useRef<{
     idx: number | null;
@@ -300,8 +299,7 @@ export default function PlayerHand({
               const selected = isHuman && selectedIdx === i;
               const isMoving = movingCardIdx === i;
               const canPress = canSelect || canReorder;
-              const canDrag =
-                dragDropEnabled && isHuman && canReorder && !faceDown;
+              const canDrag = isHuman && canReorder && !faceDown;
               const isDragging = draggingIdx === i;
               const disabled = faceDown
                 ? isHuman

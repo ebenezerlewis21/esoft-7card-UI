@@ -54,7 +54,6 @@ export default function GameScreen(): React.ReactElement {
   const skeletonEnabled = Feature.skeleton.enabled();
   const lobbyEnabled = Feature.lobbyScreen.enabled();
   const gameScreenAdEnabled = Feature.gameScreenAd.enabled();
-  const dragDropEnabled = Feature.dragDrop.enabled();
   const [activeBackgroundId, setActiveBackgroundId] = useState(
     getActiveBackgroundId(),
   );
@@ -1418,7 +1417,7 @@ export default function GameScreen(): React.ReactElement {
               movingCardIdx={state.movingCardIdx}
               onCardPress={handleSelectCard}
               onCardDoubleTap={handleDoubleTapCard}
-              onCardDrop={dragDropEnabled ? swapHumanCards : undefined}
+              onCardDrop={swapHumanCards}
               score={calcHandScore(players[0].cards)}
               gameOver={gameOver}
             />

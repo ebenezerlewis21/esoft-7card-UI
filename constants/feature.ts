@@ -28,7 +28,6 @@ export const Feature: {
   skeleton: FeatureGate;
   lobbyScreen: FeatureGate;
   gameScreenAd: FeatureGate;
-  dragDrop: FeatureGate;
 } = {
   skeleton: {
     enabled: () =>
@@ -41,9 +40,5 @@ export const Feature: {
   gameScreenAd: {
     enabled: () =>
       readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_GAME_SCREEN_AD"), true),
-  },
-  dragDrop: {
-    enabled: () =>
-      readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_DRAG_DROP"), true),
   },
 };
