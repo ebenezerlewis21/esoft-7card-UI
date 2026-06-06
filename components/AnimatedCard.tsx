@@ -54,7 +54,18 @@ export default function AnimatedCard({
     ]).start(() => {
       onComplete?.();
     });
-  }, []);
+  }, [
+    duration,
+    fromPosition.x,
+    fromPosition.y,
+    onComplete,
+    opacityAnim,
+    scaleAnim,
+    toPosition.x,
+    toPosition.y,
+    translateXAnim,
+    translateYAnim,
+  ]);
 
   return (
     <Animated.View

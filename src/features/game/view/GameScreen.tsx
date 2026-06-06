@@ -10,12 +10,15 @@ import { Feature } from "@/constants/feature";
 import {
   getActiveBackgroundId,
   getActiveCardBackId,
+  getTurnAlertMode,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
   subscribeSoundEnabled,
+  subscribeTurnAlertMode,
+  type TurnAlertMode,
 } from "@/constants/settings";
 import {
   setAudioModeAsync,
@@ -31,6 +34,7 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 import {
@@ -42,10 +46,8 @@ import {
   makeDeck,
 } from "../entity/GameEntities";
 import { GameInteractor, type GameState } from "../interactor/GameInteractor";
-import { GamePresenter } from "../presenter/GamePresenter";
 
 const gameInteractor = new GameInteractor();
-const gamePresenter = new GamePresenter();
 
 export default function GameScreen(): React.ReactElement {
   const router = useRouter();
@@ -83,6 +85,8 @@ export default function GameScreen(): React.ReactElement {
     gameInteractor.createInitialState(),
   );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
+  const [turnAlertMode, setTurnAlertMode] =
+    useState<TurnAlertMode>(getTurnAlertMode());
   const [matchWins, setMatchWins] = useState<number[]>([0, 0, 0]);
   const [matchWinnerIdx, setMatchWinnerIdx] = useState<number | null>(null);
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
@@ -90,7 +94,7 @@ export default function GameScreen(): React.ReactElement {
   const [showGameScreenAd, setShowGameScreenAd] = useState<boolean>(false);
   const [deckToastMessage, setDeckToastMessage] = useState<string | null>(null);
   const [animatedCards, setAnimatedCards] = useState<
-    Array<{
+    {
       id: string;
       card: Card;
       faceDown?: boolean;
@@ -99,7 +103,7 @@ export default function GameScreen(): React.ReactElement {
       fromY: number;
       toX: number;
       toY: number;
-    }>
+    }[]
   >([]);
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerHandOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -121,14 +125,14 @@ export default function GameScreen(): React.ReactElement {
   const discardSlotPosRef = useRef<{ x: number; y: number }>({ x: 160, y: 40 });
   const firstSelectedCardPosRef = useRef<{ x: number; y: number } | null>(null);
   const selectedSwapCardPosRef = useRef<{ x: number; y: number } | null>(null);
-  const centerZoneRef = useRef<View>(null);
-  const shuffleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  const swapSoundTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const shuffleTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const swapSoundTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const roundScoredRef = useRef<boolean>(false);
   const deckToastAnimRef = useRef(new Animated.Value(0));
   const deckToastRunIdRef = useRef<number>(0);
   const initialDeckCountRef = useRef<number>(state.deck.length);
   const deckToastStepReachedRef = useRef<number>(0);
+  const wasMyTurnRef = useRef<boolean>(false);
   const shuffleAudio = useAudioPlayer(SHUFFLE_SOUND_SOURCE, {
     downloadFirst: true,
     keepAudioSessionActive: true,
@@ -162,9 +166,18 @@ export default function GameScreen(): React.ReactElement {
   useEffect(() => {
     void initializeSoundSettings();
     void initializeProfileSettings();
-    return subscribeSoundEnabled((enabled) => {
+    const unsubscribeSound = subscribeSoundEnabled((enabled) => {
       setSoundEnabled(enabled);
     });
+
+    const unsubscribeTurnAlertMode = subscribeTurnAlertMode((mode) => {
+      setTurnAlertMode(mode);
+    });
+
+    return () => {
+      unsubscribeSound();
+      unsubscribeTurnAlertMode();
+    };
   }, []);
 
   useEffect(() => {
@@ -395,6 +408,7 @@ export default function GameScreen(): React.ReactElement {
     shuffleTimersRef.current.push(doneTimer);
   }, [
     clearShuffleTimers,
+    SHUFFLE_STEP_MS,
     soundEnabled,
     shuffleAudio,
     shuffleAudioStatus.isLoaded,
@@ -1113,7 +1127,6 @@ export default function GameScreen(): React.ReactElement {
       state.gameOver,
       state.movingCardIdx,
       state.phase,
-      state.selectedHandIdx,
       state.turn,
       swapHumanCards,
     ],
@@ -1208,6 +1221,13 @@ export default function GameScreen(): React.ReactElement {
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
   const showTopTurnBanner = skeletonEnabled && isShuffling;
+
+  useEffect(() => {
+    if (isMyTurn && !wasMyTurnRef.current && turnAlertMode === "vibrate") {
+      Vibration.vibrate(120);
+    }
+    wasMyTurnRef.current = isMyTurn;
+  }, [isMyTurn, turnAlertMode]);
 
   return (
     <SafeAreaView

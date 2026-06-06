@@ -14,12 +14,16 @@ import Text3D from "../components/Text3D";
 import { BACKGROUNDS } from "../constants/backgrounds";
 import {
   getActiveBackgroundId,
+  getTurnAlertMode,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
   setSoundEnabled,
+  setTurnAlertMode,
   subscribeBackgroundSettings,
   subscribeSoundEnabled,
+  subscribeTurnAlertMode,
+  type TurnAlertMode,
 } from "../constants/settings";
 
 const PLAYER_PROFILE = {
@@ -34,6 +38,8 @@ export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
+  const [turnAlertMode, setTurnAlertModeState] =
+    React.useState<TurnAlertMode>(getTurnAlertMode());
   const [activeBackgroundId, setActiveBackgroundIdState] = React.useState(
     getActiveBackgroundId(),
   );
@@ -69,12 +75,17 @@ export default function LobbyScreen(): React.ReactElement {
       setActiveBackgroundIdState(getActiveBackgroundId());
     });
 
+    const unsubscribeTurnAlertMode = subscribeTurnAlertMode((mode) => {
+      setTurnAlertModeState(mode);
+    });
+
     void initializeSoundSettings();
     void initializeProfileSettings();
 
     return () => {
       unsubscribe();
       unsubscribeBackgrounds();
+      unsubscribeTurnAlertMode();
     };
   }, []);
 
@@ -267,6 +278,24 @@ export default function LobbyScreen(): React.ReactElement {
                 thumbColor={soundEnabled ? "#e9ffe9" : "#f2f2f2"}
               />
             </View>
+
+            <View style={styles.turnAlertSection}>
+              <View style={styles.optionRow}>
+                <Text3D style={styles.optionLabel}>Enable Vibrate</Text3D>
+                <Switch
+                  value={turnAlertMode === "vibrate"}
+                  onValueChange={(value) => {
+                    const nextMode: TurnAlertMode = value ? "vibrate" : "none";
+                    setTurnAlertModeState(nextMode);
+                    setTurnAlertMode(nextMode);
+                  }}
+                  trackColor={{ false: "#6b6b6b", true: "#4caf50" }}
+                  thumbColor={
+                    turnAlertMode === "vibrate" ? "#e9ffe9" : "#f2f2f2"
+                  }
+                />
+              </View>
+            </View>
             <Text3D style={styles.settingsHint}>
               Equip gameboards and cards from the Shop.
             </Text3D>
@@ -335,12 +364,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  modalSectionTitle: {
-    color: "#fdf0b4",
-    fontSize: 15,
-    fontWeight: "800",
-    marginBottom: 4,
   },
   infoButton: {
     width: 36,
@@ -547,46 +570,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+  turnAlertSection: {
+    marginBottom: 14,
+  },
   settingsHint: {
     color: "rgba(255,255,255,0.82)",
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
     textAlign: "center",
-  },
-  backgroundList: {
-    gap: 10,
-    marginBottom: 18,
-  },
-  backgroundRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  backgroundRowActive: {
-    backgroundColor: "rgba(246, 212, 58, 0.16)",
-  },
-  backgroundSwatch: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-  },
-  backgroundMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  backgroundName: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  backgroundStatus: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 12,
   },
   modalCloseBtn: {
     borderRadius: 16,

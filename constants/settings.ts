@@ -7,6 +7,7 @@ import {
 import { CARD_BACKS, DEFAULT_CARD_BACK_ID, type CardBackId } from "./cardbacks";
 
 const SOUND_ENABLED_KEY = "@settings/soundEnabled";
+const TURN_ALERT_MODE_KEY = "@settings/turnAlertMode";
 const PLAYER_COINS_KEY = "@profile/playerCoins";
 const OWNED_BACKGROUND_IDS_KEY = "@profile/ownedBackgroundIds";
 const ACTIVE_BACKGROUND_ID_KEY = "@profile/activeBackgroundId";
@@ -17,6 +18,9 @@ const INITIAL_PLAYER_COINS = 25000;
 
 let soundEnabled = true;
 const soundListeners = new Set<(enabled: boolean) => void>();
+export type TurnAlertMode = "vibrate" | "none";
+let turnAlertMode: TurnAlertMode = "vibrate";
+const turnAlertModeListeners = new Set<(mode: TurnAlertMode) => void>();
 let hydratePromise: Promise<void> | null = null;
 
 let playerCoins = INITIAL_PLAYER_COINS;
@@ -34,6 +38,10 @@ let profileHydratePromise: Promise<void> | null = null;
 
 export function isSoundEnabled(): boolean {
   return soundEnabled;
+}
+
+export function getTurnAlertMode(): TurnAlertMode {
+  return turnAlertMode;
 }
 
 export function getPlayerCoins(): number {
@@ -346,6 +354,28 @@ async function loadSoundEnabled(): Promise<void> {
   }
 }
 
+async function loadTurnAlertMode(): Promise<void> {
+  let storedValue: string | null = null;
+
+  try {
+    storedValue = await AsyncStorage.getItem(TURN_ALERT_MODE_KEY);
+  } catch {
+    storedValue = readFromWebStorage(TURN_ALERT_MODE_KEY);
+  }
+
+  const normalized = storedValue?.trim().toLowerCase();
+  const nextMode: TurnAlertMode = normalized === "none" ? "none" : "vibrate";
+
+  if (nextMode !== turnAlertMode) {
+    turnAlertMode = nextMode;
+    turnAlertModeListeners.forEach((listener) => listener(turnAlertMode));
+  }
+
+  void AsyncStorage.setItem(TURN_ALERT_MODE_KEY, nextMode).catch(() => {
+    writeToWebStorage(TURN_ALERT_MODE_KEY, nextMode);
+  });
+}
+
 function normalizeBackgroundId(value: string | null): BackgroundId | null {
   if (!value) return null;
 
@@ -479,10 +509,22 @@ export function initializeProfileSettings(): Promise<void> {
 
 export function initializeSoundSettings(): Promise<void> {
   if (!hydratePromise) {
-    hydratePromise = loadSoundEnabled();
+    hydratePromise = Promise.all([
+      loadSoundEnabled(),
+      loadTurnAlertMode(),
+    ]).then(() => undefined);
   }
 
   return hydratePromise;
+}
+
+export function setTurnAlertMode(mode: TurnAlertMode): void {
+  turnAlertMode = mode;
+  turnAlertModeListeners.forEach((listener) => listener(turnAlertMode));
+
+  void AsyncStorage.setItem(TURN_ALERT_MODE_KEY, turnAlertMode).catch(() => {
+    writeToWebStorage(TURN_ALERT_MODE_KEY, turnAlertMode);
+  });
 }
 
 export function setSoundEnabled(enabled: boolean): void {
@@ -503,5 +545,14 @@ export function subscribeSoundEnabled(
   soundListeners.add(listener);
   return () => {
     soundListeners.delete(listener);
+  };
+}
+
+export function subscribeTurnAlertMode(
+  listener: (mode: TurnAlertMode) => void,
+): () => void {
+  turnAlertModeListeners.add(listener);
+  return () => {
+    turnAlertModeListeners.delete(listener);
   };
 }

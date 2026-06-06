@@ -11,12 +11,15 @@ import { Feature } from "@/constants/feature";
 import {
   getActiveBackgroundId,
   getActiveCardBackId,
+  getTurnAlertMode,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
   subscribeSoundEnabled,
+  subscribeTurnAlertMode,
+  type TurnAlertMode,
 } from "@/constants/settings";
 import {
   aiDecide,
@@ -43,6 +46,7 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 import {
@@ -139,6 +143,8 @@ export default function GameScreen(): React.ReactElement {
   const HAND_REVEAL_STAGGER_MS = 130;
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
+  const [turnAlertMode, setTurnAlertMode] =
+    useState<TurnAlertMode>(getTurnAlertMode());
   const [matchWins, setMatchWins] = useState<number[]>([0, 0, 0]);
   const [matchWinnerIdx, setMatchWinnerIdx] = useState<number | null>(null);
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
@@ -190,6 +196,7 @@ export default function GameScreen(): React.ReactElement {
   const deckToastRunIdRef = useRef<number>(0);
   const initialDeckCountRef = useRef<number>(state.deck.length);
   const deckToastStepReachedRef = useRef<number>(0);
+  const wasMyTurnRef = useRef<boolean>(false);
   const winnerRevealIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -229,9 +236,18 @@ export default function GameScreen(): React.ReactElement {
   useEffect(() => {
     void initializeSoundSettings();
     void initializeProfileSettings();
-    return subscribeSoundEnabled((enabled) => {
+    const unsubscribeSound = subscribeSoundEnabled((enabled) => {
       setSoundEnabled(enabled);
     });
+
+    const unsubscribeTurnAlertMode = subscribeTurnAlertMode((mode) => {
+      setTurnAlertMode(mode);
+    });
+
+    return () => {
+      unsubscribeSound();
+      unsubscribeTurnAlertMode();
+    };
   }, []);
 
   useEffect(() => {
@@ -1332,6 +1348,14 @@ export default function GameScreen(): React.ReactElement {
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
   const showTopTurnBanner = skeletonEnabled && isShuffling;
+
+  useEffect(() => {
+    if (isMyTurn && !wasMyTurnRef.current && turnAlertMode === "vibrate") {
+      Vibration.vibrate(120);
+    }
+    wasMyTurnRef.current = isMyTurn;
+  }, [isMyTurn, turnAlertMode]);
+
   let winnerIdx = 0;
   let winnerScore = calcHandScore(players[0].cards);
   for (let i = 1; i < players.length; i++) {
