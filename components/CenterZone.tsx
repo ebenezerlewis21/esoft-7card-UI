@@ -1,6 +1,6 @@
+import type { Card as CardType } from "@/game/logic";
 import React, { useRef } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import type { Card as CardType } from "@/game/logic";
 import Card from "./Card";
 import Text3D from "./Text3D";
 
@@ -54,7 +54,12 @@ export default function CenterZone({
         <Text3D style={styles.label}>
           {drawnFrom === "deck" ? "DRAWN" : "DECK"}
         </Text3D>
-        <View style={[styles.pileHighlightShell, canDrawDeck && styles.pileHighlightShellActive]}>
+        <View
+          style={[
+            styles.pileHighlightShell,
+            canDrawDeck && styles.pileHighlightShellActive,
+          ]}
+        >
           {drawnFrom === "deck" && drawnCard ? (
             <Card card={drawnCard} selected size="large" />
           ) : (
@@ -93,7 +98,7 @@ export default function CenterZone({
         </View>
         <Text3D style={styles.count}>
           {drawnFrom === "deck" && drawnCard
-            ? "← select to swap"
+            ? "← double tap hand to swap"
             : `${deckCount} left`}
         </Text3D>
       </View>
@@ -118,7 +123,10 @@ export default function CenterZone({
           {drawnFrom === "discard" ? "DRAWN" : "DISCARD"}
         </Text3D>
         <View
-          style={[styles.pileHighlightShell, canTakeDiscard && styles.pileHighlightShellActive]}
+          style={[
+            styles.pileHighlightShell,
+            canTakeDiscard && styles.pileHighlightShellActive,
+          ]}
           onLayout={(event) => {
             const slotLayout = event.nativeEvent.layout;
             onDiscardPositionChange?.({
@@ -148,7 +156,7 @@ export default function CenterZone({
         </View>
         <Text3D style={styles.count}>
           {drawnFrom === "discard" && drawnCard
-            ? "← select to swap"
+            ? "← double tap hand to swap"
             : "tap to take"}
         </Text3D>
       </View>

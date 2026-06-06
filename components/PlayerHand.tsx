@@ -330,7 +330,7 @@ export default function PlayerHand({
                                 y: cardsAreaOriginRef.current.y + layout.y,
                               }
                             : undefined;
-                          if (dragDropEnabled && canReorder) {
+                          if ((canReorder || canSelect) && onCardDoubleTap) {
                             const now = Date.now();
                             const lastTap = lastTapRef.current;
                             if (

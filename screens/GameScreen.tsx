@@ -731,7 +731,7 @@ export default function GameScreen(): React.ReactElement {
         selectedHandIdx: null,
         movingCardIdx: null,
         message:
-          "Card drawn! Tap one of your cards to select it for swapping, or keep your hand.",
+          "Card drawn! Double tap a hand card to swap, or keep your hand.",
       };
     });
   }, []);
@@ -755,7 +755,7 @@ export default function GameScreen(): React.ReactElement {
         phase: "drawn",
         selectedHandIdx: null,
         movingCardIdx: null,
-        message: "You took the discard! Tap one of your cards to swap.",
+        message: "You took the discard! Double tap a hand card to swap.",
       };
     });
   }, []);
@@ -778,26 +778,6 @@ export default function GameScreen(): React.ReactElement {
         if (prev.phase === "action" && prev.turn === 0) {
           const movingIdx = prev.movingCardIdx;
 
-          if (dragDropEnabled) {
-            if (movingIdx === null) {
-              firstSelectedCardPosRef.current = cardPos ?? null;
-              return {
-                ...prev,
-                movingCardIdx: idx,
-              };
-            }
-
-            if (movingIdx === idx) {
-              firstSelectedCardPosRef.current = null;
-              return {
-                ...prev,
-                movingCardIdx: null,
-              };
-            }
-
-            return prev;
-          }
-
           // If no card is being moved, start moving this card
           if (movingIdx === null) {
             firstSelectedCardPosRef.current = cardPos ?? null;
@@ -816,20 +796,14 @@ export default function GameScreen(): React.ReactElement {
             };
           }
 
-          // Move card to new position
-          swapHumanCards(
-            movingIdx,
-            idx,
-            firstSelectedCardPosRef.current ?? undefined,
-            cardPos,
-          );
+          // Keep current selection on single tap; swapping is handled on double tap.
           return prev;
         }
 
         return prev;
       });
     },
-    [dragDropEnabled],
+    [],
   );
 
   const swapHumanCards = useCallback(
@@ -892,9 +866,155 @@ export default function GameScreen(): React.ReactElement {
     [],
   );
 
+  const handleSwap = useCallback(
+    (forcedIdx?: number, forcedCardPos?: { x: number; y: number }) => {
+      setState((prev) => {
+        const swapIdx = forcedIdx ?? prev.selectedHandIdx;
+        if (swapIdx === null || !prev.drawnCard) return prev;
+        playSwapAudio();
+        const swappedInCard = prev.drawnCard;
+        const incomingFromDeck = prev.drawnFrom === "deck";
+        const newPlayers = prev.players.map((p) => ({
+          ...p,
+          cards: p.cards.slice(),
+        }));
+        const discarded = newPlayers[0].cards.splice(
+          swapIdx,
+          1,
+          prev.drawnCard,
+        )[0];
+        const newDiscard = [...prev.discard, discarded];
+
+        // Trigger animation for discarded card
+        const animId = `${discarded.suit}${discarded.rank}-${Date.now()}`;
+        if (forcedCardPos) {
+          selectedSwapCardPosRef.current = forcedCardPos;
+        }
+        const selectedPos = selectedSwapCardPosRef.current;
+        setAnimatedCards((prevCards) => [
+          ...prevCards,
+          {
+            id: animId,
+            card: discarded,
+            fromX: selectedPos
+              ? playerHandOriginRef.current.x + selectedPos.x
+              : 0,
+            fromY: selectedPos
+              ? playerHandOriginRef.current.y + selectedPos.y
+              : 150,
+            toX:
+              topRowOriginRef.current.x +
+              centerPanelOriginRef.current.x +
+              discardSlotPosRef.current.x +
+              40,
+            toY:
+              topRowOriginRef.current.y +
+              centerPanelOriginRef.current.y +
+              discardSlotPosRef.current.y,
+          },
+        ]);
+
+        setTimeout(() => {
+          setAnimatedCards((prevCards) =>
+            prevCards.filter((ac) => ac.id !== animId),
+          );
+        }, CARD_MOVE_CLEANUP_MS);
+
+        if (incomingFromDeck) {
+          const toPos = selectedSwapCardPosRef.current;
+          const incomingAnimId = `${swappedInCard.suit}${swappedInCard.rank}-incoming-${Date.now()}`;
+          if (toPos) {
+            setAnimatedCards((prevCards) => [
+              ...prevCards,
+              {
+                id: incomingAnimId,
+                card: swappedInCard,
+                fromX:
+                  topRowOriginRef.current.x +
+                  centerPanelOriginRef.current.x +
+                  deckSlotPosRef.current.x,
+                fromY:
+                  topRowOriginRef.current.y +
+                  centerPanelOriginRef.current.y +
+                  deckSlotPosRef.current.y,
+                toX: playerHandOriginRef.current.x + toPos.x,
+                toY: playerHandOriginRef.current.y + toPos.y,
+              },
+            ]);
+
+            setTimeout(() => {
+              setAnimatedCards((prevCards) =>
+                prevCards.filter((ac) => ac.id !== incomingAnimId),
+              );
+            }, CARD_MOVE_CLEANUP_MS);
+          }
+        }
+
+        setTimeout(() => {
+          setState((current) => ({
+            ...current,
+            discard: newDiscard,
+          }));
+        }, CARD_MOVE_CLEANUP_MS);
+
+        const nextState: GameState = {
+          ...prev,
+          players: newPlayers,
+          discard: prev.discard,
+          drawnCard: null,
+          drawnFrom: null,
+          phase: "action",
+          selectedHandIdx: null,
+          movingCardIdx: null,
+          message: "Swapped! Next player…",
+          turn: 0,
+          aiThinking: true,
+          gameOver: false,
+        };
+
+        if (nextState.deck.length === 0) {
+          return {
+            ...nextState,
+            gameOver: true,
+            message: "Deck is empty — game over!",
+          };
+        }
+
+        setTimeout(() => {
+          setState((current) => {
+            if (current.gameOver) return current;
+            return {
+              ...current,
+              turn: 1,
+              message: "Player 2 is thinking…",
+              aiThinking: true,
+            };
+          });
+        }, CARD_MOVE_CLEANUP_MS + AI_TURN_DELAY_AFTER_ANIMATION_MS);
+
+        aiTimerRef.current = setTimeout(
+          () => runAiTurn(1),
+          CARD_MOVE_CLEANUP_MS + AI_TURN_DELAY_AFTER_ANIMATION_MS * 2,
+        );
+        selectedSwapCardPosRef.current = null;
+        return nextState;
+      });
+    },
+    [playSwapAudio, runAiTurn],
+  );
+
   const handleDoubleTapCard = useCallback(
     (idx: number, cardPos?: { x: number; y: number }) => {
-      if (state.phase !== "action" || state.turn !== 0) return;
+      if (state.turn !== 0 || state.gameOver) return;
+
+      if (state.phase === "drawn") {
+        if (state.drawnCard) {
+          handleSwap(idx, cardPos);
+        }
+        return;
+      }
+
+      if (state.phase !== "action") return;
 
       const selectedIdx = state.movingCardIdx;
       if (selectedIdx === null || selectedIdx === idx) {
@@ -908,136 +1028,16 @@ export default function GameScreen(): React.ReactElement {
         cardPos,
       );
     },
-    [state.movingCardIdx, state.phase, state.turn, swapHumanCards],
+    [
+      handleSwap,
+      state.drawnCard,
+      state.gameOver,
+      state.movingCardIdx,
+      state.phase,
+      state.turn,
+      swapHumanCards,
+    ],
   );
-
-  const handleSwap = useCallback(() => {
-    setState((prev) => {
-      if (prev.selectedHandIdx === null || !prev.drawnCard) return prev;
-      playSwapAudio();
-      const swappedInCard = prev.drawnCard;
-      const incomingFromDeck = prev.drawnFrom === "deck";
-      const newPlayers = prev.players.map((p) => ({
-        ...p,
-        cards: p.cards.slice(),
-      }));
-      const discarded = newPlayers[0].cards.splice(
-        prev.selectedHandIdx,
-        1,
-        prev.drawnCard,
-      )[0];
-      const newDiscard = [...prev.discard, discarded];
-
-      // Trigger animation for discarded card
-      const animId = `${discarded.suit}${discarded.rank}-${Date.now()}`;
-      const selectedPos = selectedSwapCardPosRef.current;
-      setAnimatedCards((prev) => [
-        ...prev,
-        {
-          id: animId,
-          card: discarded,
-          fromX: selectedPos
-            ? playerHandOriginRef.current.x + selectedPos.x
-            : 0,
-          fromY: selectedPos
-            ? playerHandOriginRef.current.y + selectedPos.y
-            : 150,
-          toX:
-            topRowOriginRef.current.x +
-            centerPanelOriginRef.current.x +
-            discardSlotPosRef.current.x +
-            40,
-          toY:
-            topRowOriginRef.current.y +
-            centerPanelOriginRef.current.y +
-            discardSlotPosRef.current.y,
-        },
-      ]);
-
-      setTimeout(() => {
-        setAnimatedCards((prev) => prev.filter((ac) => ac.id !== animId));
-      }, CARD_MOVE_CLEANUP_MS);
-
-      if (incomingFromDeck) {
-        const toPos = selectedSwapCardPosRef.current;
-        const incomingAnimId = `${swappedInCard.suit}${swappedInCard.rank}-incoming-${Date.now()}`;
-        if (toPos) {
-          setAnimatedCards((prevCards) => [
-            ...prevCards,
-            {
-              id: incomingAnimId,
-              card: swappedInCard,
-              fromX:
-                topRowOriginRef.current.x +
-                centerPanelOriginRef.current.x +
-                deckSlotPosRef.current.x,
-              fromY:
-                topRowOriginRef.current.y +
-                centerPanelOriginRef.current.y +
-                deckSlotPosRef.current.y,
-              toX: playerHandOriginRef.current.x + toPos.x,
-              toY: playerHandOriginRef.current.y + toPos.y,
-            },
-          ]);
-
-          setTimeout(() => {
-            setAnimatedCards((prevCards) =>
-              prevCards.filter((ac) => ac.id !== incomingAnimId),
-            );
-          }, CARD_MOVE_CLEANUP_MS);
-        }
-      }
-
-      setTimeout(() => {
-        setState((current) => ({
-          ...current,
-          discard: newDiscard,
-        }));
-      }, CARD_MOVE_CLEANUP_MS);
-
-      const nextState: GameState = {
-        ...prev,
-        players: newPlayers,
-        discard: prev.discard,
-        drawnCard: null,
-        drawnFrom: null,
-        phase: "action",
-        selectedHandIdx: null,
-        movingCardIdx: null,
-        message: "Swapped! Next player…",
-        turn: 0,
-        aiThinking: true,
-        gameOver: false,
-      };
-
-      if (nextState.deck.length === 0) {
-        return {
-          ...nextState,
-          gameOver: true,
-          message: "Deck is empty — game over!",
-        };
-      }
-
-      setTimeout(() => {
-        setState((current) => {
-          if (current.gameOver) return current;
-          return {
-            ...current,
-            turn: 1,
-            message: "Player 2 is thinking…",
-            aiThinking: true,
-          };
-        });
-      }, CARD_MOVE_CLEANUP_MS + AI_TURN_DELAY_AFTER_ANIMATION_MS);
-
-      aiTimerRef.current = setTimeout(
-        () => runAiTurn(1),
-        CARD_MOVE_CLEANUP_MS + AI_TURN_DELAY_AFTER_ANIMATION_MS * 2,
-      );
-      selectedSwapCardPosRef.current = null;
-      return nextState;
-    });
-  }, [playSwapAudio, runAiTurn]);
 
   const handleKeep = useCallback(() => {
     setState((prev) => {
@@ -1382,9 +1382,7 @@ export default function GameScreen(): React.ReactElement {
               selectedIdx={selectedHandIdx}
               movingCardIdx={state.movingCardIdx}
               onCardPress={handleSelectCard}
-              onCardDoubleTap={
-                dragDropEnabled ? handleDoubleTapCard : undefined
-              }
+              onCardDoubleTap={handleDoubleTapCard}
               onCardDrop={dragDropEnabled ? swapHumanCards : undefined}
               score={calcHandScore(players[0].cards)}
               gameOver={gameOver}
@@ -1435,19 +1433,6 @@ export default function GameScreen(): React.ReactElement {
 
           {isMyTurn && phase === "drawn" && !gameOver && (
             <View style={styles.drawnFloatingActions}>
-              <TouchableOpacity
-                style={[
-                  styles.floatingActionButton,
-                  styles.floatingSwapButton,
-                  selectedHandIdx === null && styles.floatingActionDisabled,
-                ]}
-                onPress={handleSwap}
-                disabled={selectedHandIdx === null}
-                activeOpacity={0.8}
-              >
-                <Text3D style={styles.floatingActionText}>↔ Swap</Text3D>
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.floatingActionButton, styles.floatingKeepButton]}
                 onPress={handleKeep}
