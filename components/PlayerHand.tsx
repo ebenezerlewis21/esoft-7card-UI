@@ -86,7 +86,7 @@ export default function PlayerHand({
   const canReorder =
     isHuman && phase === "action" && !gameOver && isCurrentTurn;
   const cardSize: "normal" | "small" = compact ? "small" : "normal";
-  const stackedCardOverlap = compact ? -14 : -20;
+  const stackedCardOverlap = compact ? -22 : -28;
   const isMatchPointDanger = skeletonEnabled && matchPointActive && wins === 0;
   const lastTapRef = useRef<{ idx: number | null; time: number }>({
     idx: null,
@@ -444,21 +444,41 @@ export default function PlayerHand({
                 { gap: stackedCardOverlap },
               ]}
             >
-              {Array.from({ length: 7 }).map((_, i) => (
-                <View
-                  key={i}
-                  style={{ transform: [{ rotate: `${(i - 3) * 2.5}deg` }] }}
-                >
-                  <Card
-                    card={player.cards[i] ?? player.cards[0]}
-                    faceDown
-                    cardBackColor={cardBackColor}
-                    size={cardSize}
-                    cardWidth={compact ? 28 : 40}
-                    cardHeight={compact ? 40 : 56}
-                  />
-                </View>
-              ))}
+              {Array.from({ length: 7 }).map((_, i) => {
+                const centerIndex = 3;
+                const distanceFromCenter = Math.abs(i - centerIndex);
+                const arcTranslateY = compact
+                  ? distanceFromCenter * -4
+                  : distanceFromCenter * -6;
+                const arcRotate = (centerIndex - i) * (compact ? 7 : 9);
+                const arcScale = Math.max(
+                  compact ? 0.88 : 0.9,
+                  1 - distanceFromCenter * (compact ? 0.035 : 0.03),
+                );
+
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      zIndex: 20 - distanceFromCenter,
+                      transform: [
+                        { translateY: arcTranslateY },
+                        { rotate: `${arcRotate}deg` },
+                        { scale: arcScale },
+                      ],
+                    }}
+                  >
+                    <Card
+                      card={player.cards[i] ?? player.cards[0]}
+                      faceDown
+                      cardBackColor={cardBackColor}
+                      size={cardSize}
+                      cardWidth={compact ? 28 : 40}
+                      cardHeight={compact ? 40 : 56}
+                    />
+                  </View>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -651,7 +671,8 @@ const styles = StyleSheet.create({
   },
   cardsRow: {
     flexDirection: "row",
-    paddingVertical: 10,
+    paddingTop: 0,
+    paddingBottom: 10,
     gap: -5,
     overflow: "visible",
   },

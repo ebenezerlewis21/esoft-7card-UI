@@ -260,6 +260,7 @@ export function calcHandScore(hand: Card[]): number {
 
 export function aiDecide(hand: Card[], discardTop: Card | null): AiDecision {
   const currentScore = calcHandScore(hand);
+  const MIN_DISCARD_GAIN_TO_TAKE = 2;
 
   if (discardTop) {
     let bestGain = 0;
@@ -274,7 +275,7 @@ export function aiDecide(hand: Card[], discardTop: Card | null): AiDecision {
         bestIdx = i;
       }
     }
-    if (bestIdx >= 0) {
+    if (bestIdx >= 0 && bestGain >= MIN_DISCARD_GAIN_TO_TAKE) {
       return { action: "takeDiscard", swapIdx: bestIdx };
     }
   }

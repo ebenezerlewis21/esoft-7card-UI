@@ -1,3 +1,5 @@
+import type { Card as CardType } from "@/game/logic";
+import { isRed } from "@/game/logic";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
@@ -6,8 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import type { Card as CardType } from "@/game/logic";
-import { isRed } from "@/game/logic";
 import Text3D from "./Text3D";
 
 type CardProps = {
@@ -44,7 +44,9 @@ export default function Card({
   const liftAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const idleAnim = useRef(new Animated.Value(0)).current;
   const bounceLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const idleLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (selected) {
@@ -117,9 +119,56 @@ export default function Card({
     }
   }, [highlighted, faceDown, glowAnim]);
 
+  useEffect(() => {
+    const shouldIdleAnimate = !selected && !disabled;
+
+    if (shouldIdleAnimate) {
+      idleLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(idleAnim, {
+            toValue: 1,
+            duration: 1400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(idleAnim, {
+            toValue: 0,
+            duration: 1400,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      idleLoop.current.start();
+    } else {
+      if (idleLoop.current) {
+        idleLoop.current.stop();
+        idleLoop.current = null;
+      }
+      idleAnim.setValue(0);
+    }
+
+    return () => {
+      if (idleLoop.current) {
+        idleLoop.current.stop();
+        idleLoop.current = null;
+      }
+    };
+  }, [disabled, idleAnim, selected]);
+
   const translateY = liftAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [liftAmount, liftAmount - 10],
+  });
+  const idleLift = idleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -2],
+  });
+  const idleRotateX = idleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-4deg", "-6deg"],
+  });
+  const idleRotateY = idleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["3deg", "5deg"],
   });
   const borderColor = glowAnim.interpolate({
     inputRange: [0, 1],
@@ -128,11 +177,11 @@ export default function Card({
 
   const cardTransform = [
     { perspective: 700 },
-    { translateY },
+    { translateY: Animated.add(translateY, idleLift) },
     { scale: scaleAnim },
     { rotateZ },
-    { rotateX: selected ? "-6deg" : "-4deg" },
-    { rotateY: selected ? "5deg" : "3deg" },
+    { rotateX: selected ? "-8deg" : idleRotateX },
+    { rotateY: selected ? "7deg" : idleRotateY },
   ];
 
   const baseDims =

@@ -61,7 +61,7 @@ export default function CenterZone({
           ]}
         >
           {drawnFrom === "deck" && drawnCard ? (
-            <Card card={drawnCard} selected size="large" />
+            <Card card={drawnCard} selected size="large" liftAmount={8} />
           ) : (
             <TouchableOpacity
               onPress={onDrawDeck}
@@ -96,11 +96,6 @@ export default function CenterZone({
             </TouchableOpacity>
           )}
         </View>
-        <Text3D style={styles.count}>
-          {drawnFrom === "deck" && drawnCard
-            ? "← double tap hand to swap"
-            : `${deckCount} left`}
-        </Text3D>
       </View>
 
       {isMyTurn && onStop && (
@@ -137,7 +132,7 @@ export default function CenterZone({
           }}
         >
           {drawnFrom === "discard" && drawnCard ? (
-            <Card card={drawnCard} selected size="large" />
+            <Card card={drawnCard} selected size="large" liftAmount={8} />
           ) : discardTop ? (
             <Card
               card={discardTop}
@@ -146,7 +141,7 @@ export default function CenterZone({
               onPress={canTakeDiscard ? onTakeDiscard : undefined}
               size="large"
               rotateZ="0deg"
-              liftAmount={-12}
+              liftAmount={-5}
             />
           ) : (
             <View style={styles.emptyPile}>
@@ -155,9 +150,7 @@ export default function CenterZone({
           )}
         </View>
         <Text3D style={styles.count}>
-          {drawnFrom === "discard" && drawnCard
-            ? "← double tap hand to swap"
-            : "tap to take"}
+          {drawnFrom === "discard" && drawnCard ? "" : "tap to take"}
         </Text3D>
       </View>
     </View>
@@ -167,13 +160,16 @@ export default function CenterZone({
 const styles = StyleSheet.create({
   zone: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-evenly",
     alignItems: "center",
-    gap: 14,
+    gap: 6,
+    minWidth: 210,
+    minHeight: 210,
+    aspectRatio: 1,
     backgroundColor: "rgba(0,0,0,0.2)",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
     marginVertical: 3,
   },
   zoneHighlighted: {
@@ -187,12 +183,12 @@ const styles = StyleSheet.create({
   },
   pileArea: {
     alignItems: "center",
-    gap: 4,
+    gap: 2,
   },
   pileHighlightShell: {
     borderRadius: 12,
     padding: 4,
-    borderWidth: 1,
+    borderWidth: 0.1,
     borderColor: "transparent",
   },
   pileHighlightShellActive: {

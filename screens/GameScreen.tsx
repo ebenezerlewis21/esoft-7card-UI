@@ -1,5 +1,6 @@
 import ActionBar from "@/components/ActionBar";
 import AnimatedCard from "@/components/AnimatedCard";
+import PlayingCard from "@/components/Card";
 import CenterZone from "@/components/CenterZone";
 import PlayerHand from "@/components/PlayerHand";
 import ResultModal from "@/components/ResultModal";
@@ -37,13 +38,17 @@ import {
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Modal,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type GameState = {
   deck: Card[];
@@ -96,22 +101,9 @@ function createInitialState(): GameState {
   };
 }
 
-function getTurnBannerText({
-  isShuffling,
-  turn,
-  players,
-}: {
-  isShuffling: boolean;
-  turn: number;
-  players: Player[];
-}): string {
-  if (isShuffling) return "Shuffling...";
-  if (turn === 0) return "Your turn";
-  return `${players[turn].name} turn`;
-}
-
 export default function GameScreen(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const skeletonEnabled = Feature.skeleton.enabled();
   const lobbyEnabled = Feature.lobbyScreen.enabled();
   const gameScreenAdEnabled = Feature.gameScreenAd.enabled();
@@ -137,6 +129,12 @@ export default function GameScreen(): React.ReactElement {
   const SWAP_AUDIO_RATE = 1.92;
   const SWAP_AUDIO_VARIANCE = 0.1;
   const SWAP_DOUBLE_HIT_DELAY_MS = 45;
+  const ANIM_CARD_HALF_WIDTH = 30;
+  const ANIM_CARD_HALF_HEIGHT = 44;
+  const WINNER_REVEAL_DURATION_SECONDS = 15;
+  const DECK_TOAST_STEP = 7;
+  const DECK_TOAST_FADE_MS = 220;
+  const DECK_TOAST_VISIBLE_MS = 5000;
   const SHUFFLE_STEP_MS = SHUFFLE_MOVE_DURATION_MS + SHUFFLE_GAP_MS;
   const HAND_REVEAL_STAGGER_MS = 130;
   const [state, setState] = useState<GameState>(() => createInitialState());
@@ -146,6 +144,12 @@ export default function GameScreen(): React.ReactElement {
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
   const [revealedHumanCount, setRevealedHumanCount] = useState<number>(0);
   const [showGameScreenAd, setShowGameScreenAd] = useState<boolean>(false);
+  const [showWinnerReveal, setShowWinnerReveal] = useState<boolean>(false);
+  const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
+  const [winnerRevealCountdown, setWinnerRevealCountdown] = useState<number>(
+    WINNER_REVEAL_DURATION_SECONDS,
+  );
+  const [deckToastMessage, setDeckToastMessage] = useState<string | null>(null);
   const [animatedCards, setAnimatedCards] = useState<
     Array<{
       id: string;
@@ -182,6 +186,16 @@ export default function GameScreen(): React.ReactElement {
   const shuffleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const swapSoundTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const roundScoredRef = useRef<boolean>(false);
+  const deckToastAnimRef = useRef(new Animated.Value(0));
+  const deckToastRunIdRef = useRef<number>(0);
+  const initialDeckCountRef = useRef<number>(state.deck.length);
+  const deckToastStepReachedRef = useRef<number>(0);
+  const winnerRevealIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const winnerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const shuffleAudio = useAudioPlayer(SHUFFLE_SOUND_SOURCE, {
     downloadFirst: true,
     keepAudioSessionActive: true,
@@ -252,6 +266,56 @@ export default function GameScreen(): React.ReactElement {
     });
   }, []);
 
+  useEffect(() => {
+    const deckToastAnim = deckToastAnimRef.current;
+
+    if (isShuffling) {
+      initialDeckCountRef.current = state.deck.length;
+      deckToastStepReachedRef.current = 0;
+      deckToastRunIdRef.current += 1;
+      deckToastAnim.stopAnimation();
+      deckToastAnim.setValue(0);
+      if (deckToastMessage !== null) {
+        setDeckToastMessage(null);
+      }
+      return;
+    }
+
+    const cardsUsed = Math.max(
+      0,
+      initialDeckCountRef.current - state.deck.length,
+    );
+    const reachedStep = Math.floor(cardsUsed / DECK_TOAST_STEP);
+    if (reachedStep <= deckToastStepReachedRef.current) return;
+
+    deckToastStepReachedRef.current = reachedStep;
+    if (state.deck.length <= 0) return;
+
+    const runId = deckToastRunIdRef.current + 1;
+    deckToastRunIdRef.current = runId;
+    setDeckToastMessage(`${state.deck.length} cards left in deck`);
+    deckToastAnim.stopAnimation();
+    deckToastAnim.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(deckToastAnim, {
+        toValue: 1,
+        duration: DECK_TOAST_FADE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.delay(DECK_TOAST_VISIBLE_MS),
+      Animated.timing(deckToastAnim, {
+        toValue: 0,
+        duration: DECK_TOAST_FADE_MS,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      if (deckToastRunIdRef.current !== runId) return;
+      setDeckToastMessage(null);
+    });
+  }, [deckToastMessage, isShuffling, state.deck.length]);
+
   const stopShuffleAudio = useCallback(() => {
     try {
       shuffleAudio.pause();
@@ -294,6 +358,24 @@ export default function GameScreen(): React.ReactElement {
     stopShuffleAudio();
   }, [stopShuffleAudio]);
 
+  const clearWinnerRevealTimers = useCallback(() => {
+    if (winnerRevealIntervalRef.current) {
+      clearInterval(winnerRevealIntervalRef.current);
+      winnerRevealIntervalRef.current = null;
+    }
+    if (winnerRevealTimeoutRef.current) {
+      clearTimeout(winnerRevealTimeoutRef.current);
+      winnerRevealTimeoutRef.current = null;
+    }
+  }, []);
+
+  const openResultModal = useCallback(() => {
+    clearWinnerRevealTimers();
+    setShowWinnerReveal(false);
+    setResultModalVisible(true);
+    setWinnerRevealCountdown(WINNER_REVEAL_DURATION_SECONDS);
+  }, [WINNER_REVEAL_DURATION_SECONDS, clearWinnerRevealTimers]);
+
   const runStartShuffleAnimation = useCallback(() => {
     clearShuffleTimers();
     setIsShuffling(true);
@@ -313,11 +395,13 @@ export default function GameScreen(): React.ReactElement {
     const deckX =
       topRowOriginRef.current.x +
       centerPanelOriginRef.current.x +
-      deckSlotPosRef.current.x;
+      deckSlotPosRef.current.x -
+      ANIM_CARD_HALF_WIDTH;
     const deckY =
       topRowOriginRef.current.y +
       centerPanelOriginRef.current.y +
-      deckSlotPosRef.current.y;
+      deckSlotPosRef.current.y -
+      ANIM_CARD_HALF_HEIGHT;
 
     for (let i = 0; i < SHUFFLE_PASS_COUNT; i++) {
       const spawnTimer = setTimeout(() => {
@@ -446,7 +530,7 @@ export default function GameScreen(): React.ReactElement {
   }, [MATCH_WINS_TO_WIN, skeletonEnabled, state.gameOver, state.players]);
 
   useEffect(() => {
-    if (!gameScreenAdEnabled || !state.gameOver) {
+    if (!gameScreenAdEnabled || !state.gameOver || !resultModalVisible) {
       setShowGameScreenAd(false);
       return;
     }
@@ -459,7 +543,39 @@ export default function GameScreen(): React.ReactElement {
     return () => {
       clearTimeout(adTimer);
     };
-  }, [gameScreenAdEnabled, state.gameOver]);
+  }, [gameScreenAdEnabled, resultModalVisible, state.gameOver]);
+
+  useEffect(() => {
+    if (!state.gameOver) {
+      clearWinnerRevealTimers();
+      setShowWinnerReveal(false);
+      setResultModalVisible(false);
+      setWinnerRevealCountdown(WINNER_REVEAL_DURATION_SECONDS);
+      return;
+    }
+
+    setResultModalVisible(false);
+    setShowWinnerReveal(true);
+    setWinnerRevealCountdown(WINNER_REVEAL_DURATION_SECONDS);
+    clearWinnerRevealTimers();
+
+    winnerRevealIntervalRef.current = setInterval(() => {
+      setWinnerRevealCountdown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    winnerRevealTimeoutRef.current = setTimeout(() => {
+      openResultModal();
+    }, WINNER_REVEAL_DURATION_SECONDS * 1000);
+
+    return () => {
+      clearWinnerRevealTimers();
+    };
+  }, [
+    WINNER_REVEAL_DURATION_SECONDS,
+    clearWinnerRevealTimers,
+    openResultModal,
+    state.gameOver,
+  ]);
 
   const endGame = useCallback((message: string) => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
@@ -548,12 +664,13 @@ export default function GameScreen(): React.ReactElement {
           const discardTargetX =
             topRowOriginRef.current.x +
             centerPanelOriginRef.current.x +
-            discardSlotPosRef.current.x +
-            40;
+            discardSlotPosRef.current.x -
+            ANIM_CARD_HALF_WIDTH;
           const discardTargetY =
             topRowOriginRef.current.y +
             centerPanelOriginRef.current.y +
-            discardSlotPosRef.current.y;
+            discardSlotPosRef.current.y -
+            ANIM_CARD_HALF_HEIGHT;
           setAnimatedCards((prev) => [
             ...prev,
             {
@@ -572,14 +689,14 @@ export default function GameScreen(): React.ReactElement {
               topRowOriginRef.current.x +
               centerPanelOriginRef.current.x +
               (incomingSource === "deck"
-                ? deckSlotPosRef.current.x
-                : discardSlotPosRef.current.x);
+                ? deckSlotPosRef.current.x - ANIM_CARD_HALF_WIDTH
+                : discardSlotPosRef.current.x - ANIM_CARD_HALF_WIDTH);
             const sourceY =
               topRowOriginRef.current.y +
               centerPanelOriginRef.current.y +
               (incomingSource === "deck"
-                ? deckSlotPosRef.current.y
-                : discardSlotPosRef.current.y);
+                ? deckSlotPosRef.current.y - ANIM_CARD_HALF_HEIGHT
+                : discardSlotPosRef.current.y - ANIM_CARD_HALF_HEIGHT);
 
             setAnimatedCards((prev) => [
               ...prev,
@@ -823,6 +940,8 @@ export default function GameScreen(): React.ReactElement {
           return prev;
         }
 
+        playSwapAudio();
+
         const newPlayers = prev.players.map((p) => ({
           ...p,
           cards: p.cards.slice(),
@@ -863,7 +982,7 @@ export default function GameScreen(): React.ReactElement {
         };
       });
     },
-    [],
+    [playSwapAudio],
   );
 
   const handleSwap = useCallback(
@@ -905,12 +1024,13 @@ export default function GameScreen(): React.ReactElement {
             toX:
               topRowOriginRef.current.x +
               centerPanelOriginRef.current.x +
-              discardSlotPosRef.current.x +
-              40,
+              discardSlotPosRef.current.x -
+              ANIM_CARD_HALF_WIDTH,
             toY:
               topRowOriginRef.current.y +
               centerPanelOriginRef.current.y +
-              discardSlotPosRef.current.y,
+              discardSlotPosRef.current.y -
+              ANIM_CARD_HALF_HEIGHT,
           },
         ]);
 
@@ -932,11 +1052,13 @@ export default function GameScreen(): React.ReactElement {
                 fromX:
                   topRowOriginRef.current.x +
                   centerPanelOriginRef.current.x +
-                  deckSlotPosRef.current.x,
+                  deckSlotPosRef.current.x -
+                  ANIM_CARD_HALF_WIDTH,
                 fromY:
                   topRowOriginRef.current.y +
                   centerPanelOriginRef.current.y +
-                  deckSlotPosRef.current.y,
+                  deckSlotPosRef.current.y -
+                  ANIM_CARD_HALF_HEIGHT,
                 toX: playerHandOriginRef.current.x + toPos.x,
                 toY: playerHandOriginRef.current.y + toPos.y,
               },
@@ -1042,6 +1164,7 @@ export default function GameScreen(): React.ReactElement {
   const handleKeep = useCallback(() => {
     setState((prev) => {
       if (!prev.drawnCard) return prev;
+      playSwapAudio();
       const newDiscard = [...prev.discard, prev.drawnCard];
       const drawnCard = prev.drawnCard;
       selectedSwapCardPosRef.current = null;
@@ -1061,15 +1184,16 @@ export default function GameScreen(): React.ReactElement {
           fromX:
             zoneOriginX +
             (sourceFromDeck
-              ? deckSlotPosRef.current.x
-              : discardSlotPosRef.current.x),
+              ? deckSlotPosRef.current.x - ANIM_CARD_HALF_WIDTH
+              : discardSlotPosRef.current.x - ANIM_CARD_HALF_WIDTH),
           fromY:
             zoneOriginY +
             (sourceFromDeck
-              ? deckSlotPosRef.current.y
-              : discardSlotPosRef.current.y),
-          toX: zoneOriginX + discardSlotPosRef.current.x,
-          toY: zoneOriginY + discardSlotPosRef.current.y,
+              ? deckSlotPosRef.current.y - ANIM_CARD_HALF_HEIGHT
+              : discardSlotPosRef.current.y - ANIM_CARD_HALF_HEIGHT),
+          toX: zoneOriginX + discardSlotPosRef.current.x - ANIM_CARD_HALF_WIDTH,
+          toY:
+            zoneOriginY + discardSlotPosRef.current.y - ANIM_CARD_HALF_HEIGHT,
         },
       ]);
 
@@ -1117,7 +1241,7 @@ export default function GameScreen(): React.ReactElement {
       );
       return nextState;
     });
-  }, [runAiTurn]);
+  }, [playSwapAudio, runAiTurn]);
 
   const handleStop = useCallback(() => {
     console.log("[STOP] Stop button pressed");
@@ -1207,21 +1331,21 @@ export default function GameScreen(): React.ReactElement {
     : true;
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
-  const turnBannerText = getTurnBannerText({
-    isShuffling,
-    turn,
-    players,
-  });
-  const turnBannerPositionStyle = isShuffling
-    ? styles.turnBannerShuffling
-    : turn === 0
-      ? styles.turnBannerPlayer1
-      : turn === 1
-        ? styles.turnBannerPlayer2
-        : styles.turnBannerPlayer3;
+  const showTopTurnBanner = skeletonEnabled && isShuffling;
+  let winnerIdx = 0;
+  let winnerScore = calcHandScore(players[0].cards);
+  for (let i = 1; i < players.length; i++) {
+    const score = calcHandScore(players[i].cards);
+    if (score < winnerScore) {
+      winnerScore = score;
+      winnerIdx = i;
+    }
+  }
+  const winnerPlayer = players[winnerIdx];
 
   return (
     <SafeAreaView
+      edges={["top", "bottom", "left", "right"]}
       style={[styles.safe, { backgroundColor: activeBackground.background }]}
     >
       <StatusBar
@@ -1242,17 +1366,12 @@ export default function GameScreen(): React.ReactElement {
           <View style={[styles.boardCorner, styles.boardCornerBottomLeft]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomRight]} />
 
-          {skeletonEnabled ? (
-            <View style={[styles.shuffleBanner, turnBannerPositionStyle]}>
-              <Text3D style={styles.shuffleBannerText}>{turnBannerText}</Text3D>
+          {showTopTurnBanner ? (
+            <View style={[styles.shuffleBanner, styles.turnBannerShuffling]}>
+              <Text3D style={styles.shuffleBannerText}>Shuffling...</Text3D>
             </View>
           ) : (
             <>
-              <View style={styles.deckCounter}>
-                <Text3D style={styles.deckCounterText}>
-                  {deck.length} cards left
-                </Text3D>
-              </View>
               {isShuffling && (
                 <View
                   style={[styles.shuffleBanner, styles.turnBannerShuffling]}
@@ -1271,8 +1390,42 @@ export default function GameScreen(): React.ReactElement {
             </View>
           )}
 
+          {deckToastMessage && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.deckToast,
+                {
+                  opacity: deckToastAnimRef.current,
+                  transform: [
+                    {
+                      translateY: deckToastAnimRef.current.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-10, 0],
+                      }),
+                    },
+                    {
+                      scale: deckToastAnimRef.current.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.94, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Text3D style={styles.deckToastText}>{deckToastMessage}</Text3D>
+            </Animated.View>
+          )}
+
           <View
-            style={styles.topRow}
+            style={[
+              styles.topRow,
+              {
+                paddingLeft: Math.max(4, insets.left),
+                paddingRight: Math.max(8, insets.right + 4),
+              },
+            ]}
             onLayout={(event) => {
               topRowOriginRef.current = event.nativeEvent.layout;
             }}
@@ -1357,7 +1510,10 @@ export default function GameScreen(): React.ReactElement {
             </View>
           </View>
 
-          <ActionBar gameOver={gameOver} onNewGame={handleNewGame} />
+          <ActionBar
+            gameOver={gameOver && message !== "You stopped the game!"}
+            onNewGame={handleNewGame}
+          />
 
           <View
             style={styles.player1Wrapper}
@@ -1423,30 +1579,68 @@ export default function GameScreen(): React.ReactElement {
 
           {isMyTurn && !gameOver && (
             <TouchableOpacity
-              style={styles.stopFloatingButton}
-              onPress={handleStop}
+              style={[
+                styles.floatingActionButton,
+                styles.primaryFloatingAction,
+                phase === "drawn" && drawnCard
+                  ? styles.floatingKeepButton
+                  : styles.stopGameButton,
+              ]}
+              onPress={phase === "drawn" && drawnCard ? handleKeep : handleStop}
               activeOpacity={0.8}
             >
-              <Text3D style={styles.stopFloatingButtonText}>🛑</Text3D>
+              <Text3D style={styles.floatingActionText}>
+                {phase === "drawn" && drawnCard ? "Discard" : "🛑 Stop"}
+              </Text3D>
             </TouchableOpacity>
-          )}
-
-          {isMyTurn && phase === "drawn" && !gameOver && (
-            <View style={styles.drawnFloatingActions}>
-              <TouchableOpacity
-                style={[styles.floatingActionButton, styles.floatingKeepButton]}
-                onPress={handleKeep}
-                activeOpacity={0.8}
-              >
-                <Text3D style={styles.floatingActionText}>✓ Keep</Text3D>
-              </TouchableOpacity>
-            </View>
           )}
         </View>
       </View>
 
+      <Modal
+        visible={showWinnerReveal}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        supportedOrientations={[
+          "landscape",
+          "landscape-left",
+          "landscape-right",
+        ]}
+        onRequestClose={openResultModal}
+      >
+        <View style={styles.winnerRevealOverlay}>
+          <View style={styles.winnerRevealBox}>
+            <Text3D style={styles.winnerRevealTitle}>Winner Cards</Text3D>
+            <Text3D style={styles.winnerRevealSubtitle}>
+              {winnerPlayer.name} leads with {winnerScore} points
+            </Text3D>
+
+            <View style={styles.winnerCardsGrid}>
+              {winnerPlayer.cards.map((card, idx) => (
+                <View key={`${card.id}-${idx}`} style={styles.winnerCardSlot}>
+                  <PlayingCard card={card} size="large" />
+                </View>
+              ))}
+            </View>
+
+            <Text3D style={styles.winnerRevealTimerText}>
+              Showing result in {winnerRevealCountdown}s
+            </Text3D>
+
+            <TouchableOpacity
+              onPress={openResultModal}
+              activeOpacity={0.85}
+              style={styles.winnerRevealOkButton}
+            >
+              <Text3D style={styles.winnerRevealOkText}>OK</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ResultModal
-        visible={gameOver}
+        visible={resultModalVisible}
         players={players}
         stopMessage={message}
         matchWins={skeletonEnabled ? matchWins : undefined}
@@ -1583,6 +1777,26 @@ const styles = StyleSheet.create({
   deckCounterText: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 11,
+  },
+  deckToast: {
+    position: "absolute",
+    top: 12,
+    alignSelf: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    borderColor: "rgba(246,212,58,0.9)",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 30,
+  },
+  deckToastText: {
+    color: "#f6d43a",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    textAlign: "center",
   },
   shuffleBanner: {
     position: "absolute",
@@ -1729,67 +1943,58 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    gap: 0,
+    width: "100%",
   },
   player1Wrapper: {
-    width: "75%",
-    maxWidth: 680,
+    width: "74%",
+    maxWidth: 600,
     alignSelf: "center",
     marginTop: "auto",
   },
   player2Wrapper: {
-    width: "32%",
-    minWidth: 150,
+    width: "36%",
+    minWidth: 164,
     alignSelf: "flex-start",
-    transform: [{ rotate: "-40deg" }],
+    marginTop: 8,
+    transform: [{ translateX: -8 }, { rotate: "-22deg" }],
   },
   player2HandCurve: {
-    borderTopLeftRadius: 28,
-    borderBottomLeftRadius: 28,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+    borderTopRightRadius: 40,
+    borderBottomRightRadius: 40,
+    marginRight: 8,
   },
   player3Wrapper: {
-    width: "32%",
-    minWidth: 150,
+    width: "36%",
+    minWidth: 164,
     alignSelf: "flex-start",
-    transform: [{ rotate: "40deg" }],
+    marginTop: 8,
+    transform: [{ translateX: 8 }, { rotate: "22deg" }],
   },
   player3HandCurve: {
-    borderTopRightRadius: 28,
-    borderBottomRightRadius: 28,
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopLeftRadius: 40,
+    borderBottomLeftRadius: 40,
+    marginLeft: 8,
   },
   centerPanel: {
-    width: "40%",
+    width: "24%",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 40,
+    marginTop: 24,
   },
-  stopFloatingButton: {
+  primaryFloatingAction: {
     position: "absolute",
     right: 14,
     bottom: 14,
+  },
+  stopGameButton: {
     backgroundColor: "#c0392b",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  stopFloatingButtonText: {
-    fontSize: 20,
-    lineHeight: 22,
-  },
-  drawnFloatingActions: {
-    position: "absolute",
-    right: 14,
-    bottom: 66,
-    gap: 8,
   },
   floatingActionButton: {
     borderRadius: 20,
@@ -1816,6 +2021,64 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "bold",
+    letterSpacing: 0.4,
+  },
+  winnerRevealOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  winnerRevealBox: {
+    width: "100%",
+    maxWidth: 680,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(246,212,58,0.85)",
+    backgroundColor: "rgba(10,14,12,0.9)",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    gap: 10,
+  },
+  winnerRevealTitle: {
+    color: "#f6d43a",
+    fontSize: 26,
+    fontWeight: "800",
+  },
+  winnerRevealSubtitle: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  winnerCardsGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  winnerCardSlot: {
+    transform: [{ scale: 1.02 }],
+  },
+  winnerRevealTimerText: {
+    color: "rgba(255,255,255,0.84)",
+    fontSize: 13,
+  },
+  winnerRevealOkButton: {
+    backgroundColor: "#f6d43a",
+    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  winnerRevealOkText: {
+    color: "#1a1a2e",
+    fontSize: 14,
+    fontWeight: "800",
     letterSpacing: 0.4,
   },
 });

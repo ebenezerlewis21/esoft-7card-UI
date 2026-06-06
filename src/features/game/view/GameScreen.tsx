@@ -25,6 +25,7 @@ import {
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Modal,
   SafeAreaView,
   StatusBar,
@@ -73,6 +74,9 @@ export default function GameScreen(): React.ReactElement {
   const SWAP_AUDIO_RATE = 1.92;
   const SWAP_AUDIO_VARIANCE = 0.1;
   const SWAP_DOUBLE_HIT_DELAY_MS = 45;
+  const DECK_TOAST_STEP = 7;
+  const DECK_TOAST_FADE_MS = 220;
+  const DECK_TOAST_VISIBLE_MS = 5000;
   const SHUFFLE_STEP_MS = SHUFFLE_MOVE_DURATION_MS + SHUFFLE_GAP_MS;
   const HAND_REVEAL_STAGGER_MS = 130;
   const [state, setState] = useState<GameState>(() =>
@@ -84,6 +88,7 @@ export default function GameScreen(): React.ReactElement {
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
   const [revealedHumanCount, setRevealedHumanCount] = useState<number>(0);
   const [showGameScreenAd, setShowGameScreenAd] = useState<boolean>(false);
+  const [deckToastMessage, setDeckToastMessage] = useState<string | null>(null);
   const [animatedCards, setAnimatedCards] = useState<
     Array<{
       id: string;
@@ -120,6 +125,10 @@ export default function GameScreen(): React.ReactElement {
   const shuffleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const swapSoundTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const roundScoredRef = useRef<boolean>(false);
+  const deckToastAnimRef = useRef(new Animated.Value(0));
+  const deckToastRunIdRef = useRef<number>(0);
+  const initialDeckCountRef = useRef<number>(state.deck.length);
+  const deckToastStepReachedRef = useRef<number>(0);
   const shuffleAudio = useAudioPlayer(SHUFFLE_SOUND_SOURCE, {
     downloadFirst: true,
     keepAudioSessionActive: true,
@@ -189,6 +198,56 @@ export default function GameScreen(): React.ReactElement {
       shouldRouteThroughEarpiece: false,
     });
   }, []);
+
+  useEffect(() => {
+    const deckToastAnim = deckToastAnimRef.current;
+
+    if (isShuffling) {
+      initialDeckCountRef.current = state.deck.length;
+      deckToastStepReachedRef.current = 0;
+      deckToastRunIdRef.current += 1;
+      deckToastAnim.stopAnimation();
+      deckToastAnim.setValue(0);
+      if (deckToastMessage !== null) {
+        setDeckToastMessage(null);
+      }
+      return;
+    }
+
+    const cardsUsed = Math.max(
+      0,
+      initialDeckCountRef.current - state.deck.length,
+    );
+    const reachedStep = Math.floor(cardsUsed / DECK_TOAST_STEP);
+    if (reachedStep <= deckToastStepReachedRef.current) return;
+
+    deckToastStepReachedRef.current = reachedStep;
+    if (state.deck.length <= 0) return;
+
+    const runId = deckToastRunIdRef.current + 1;
+    deckToastRunIdRef.current = runId;
+    setDeckToastMessage(`${state.deck.length} cards left in deck`);
+    deckToastAnim.stopAnimation();
+    deckToastAnim.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(deckToastAnim, {
+        toValue: 1,
+        duration: DECK_TOAST_FADE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.delay(DECK_TOAST_VISIBLE_MS),
+      Animated.timing(deckToastAnim, {
+        toValue: 0,
+        duration: DECK_TOAST_FADE_MS,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      if (deckToastRunIdRef.current !== runId) return;
+      setDeckToastMessage(null);
+    });
+  }, [deckToastMessage, isShuffling, state.deck.length]);
 
   const stopShuffleAudio = useCallback(() => {
     try {
@@ -760,6 +819,8 @@ export default function GameScreen(): React.ReactElement {
           return prev;
         }
 
+        playSwapAudio();
+
         const newPlayers = prev.players.map((p) => ({
           ...p,
           cards: p.cards.slice(),
@@ -800,7 +861,7 @@ export default function GameScreen(): React.ReactElement {
         };
       });
     },
-    [],
+    [playSwapAudio],
   );
 
   const handleSwap = useCallback(
@@ -943,6 +1004,7 @@ export default function GameScreen(): React.ReactElement {
   const handleKeep = useCallback(() => {
     setState((prev) => {
       if (!prev.drawnCard) return prev;
+      playSwapAudio();
       const newDiscard = [...prev.discard, prev.drawnCard];
       const drawnCard = prev.drawnCard;
       selectedSwapCardPosRef.current = null;
@@ -1018,7 +1080,7 @@ export default function GameScreen(): React.ReactElement {
       );
       return nextState;
     });
-  }, [runAiTurn]);
+  }, [playSwapAudio, runAiTurn]);
 
   const handleDoubleTapCard = useCallback(
     (idx: number, cardPos?: { x: number; y: number }) => {
@@ -1145,18 +1207,7 @@ export default function GameScreen(): React.ReactElement {
     : true;
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
-  const turnBannerText = gamePresenter.getTurnBannerText({
-    isShuffling,
-    turn,
-    players,
-  });
-  const turnBannerPositionStyle = isShuffling
-    ? styles.turnBannerShuffling
-    : turn === 0
-      ? styles.turnBannerPlayer1
-      : turn === 1
-        ? styles.turnBannerPlayer2
-        : styles.turnBannerPlayer3;
+  const showTopTurnBanner = skeletonEnabled && isShuffling;
 
   return (
     <SafeAreaView
@@ -1180,17 +1231,12 @@ export default function GameScreen(): React.ReactElement {
           <View style={[styles.boardCorner, styles.boardCornerBottomLeft]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomRight]} />
 
-          {skeletonEnabled ? (
-            <View style={[styles.shuffleBanner, turnBannerPositionStyle]}>
-              <Text3D style={styles.shuffleBannerText}>{turnBannerText}</Text3D>
+          {showTopTurnBanner ? (
+            <View style={[styles.shuffleBanner, styles.turnBannerShuffling]}>
+              <Text3D style={styles.shuffleBannerText}>Shuffling...</Text3D>
             </View>
           ) : (
             <>
-              <View style={styles.deckCounter}>
-                <Text3D style={styles.deckCounterText}>
-                  {deck.length} cards left
-                </Text3D>
-              </View>
               {isShuffling && (
                 <View
                   style={[styles.shuffleBanner, styles.turnBannerShuffling]}
@@ -1207,6 +1253,34 @@ export default function GameScreen(): React.ReactElement {
                 Debug: stop pressed, setting gameOver...
               </Text3D>
             </View>
+          )}
+
+          {deckToastMessage && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.deckToast,
+                {
+                  opacity: deckToastAnimRef.current,
+                  transform: [
+                    {
+                      translateY: deckToastAnimRef.current.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-10, 0],
+                      }),
+                    },
+                    {
+                      scale: deckToastAnimRef.current.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.94, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Text3D style={styles.deckToastText}>{deckToastMessage}</Text3D>
+            </Animated.View>
           )}
 
           <View
@@ -1295,7 +1369,10 @@ export default function GameScreen(): React.ReactElement {
             </View>
           </View>
 
-          <ActionBar gameOver={gameOver} onNewGame={handleNewGame} />
+          <ActionBar
+            gameOver={gameOver && message !== "You stopped the game!"}
+            onNewGame={handleNewGame}
+          />
 
           <View
             style={styles.player1Wrapper}
@@ -1521,6 +1598,26 @@ const styles = StyleSheet.create({
   deckCounterText: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 11,
+  },
+  deckToast: {
+    position: "absolute",
+    top: 12,
+    alignSelf: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    borderColor: "rgba(246,212,58,0.9)",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 30,
+  },
+  deckToastText: {
+    color: "#f6d43a",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    textAlign: "center",
   },
   shuffleBanner: {
     position: "absolute",
