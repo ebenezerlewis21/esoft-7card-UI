@@ -1,6 +1,6 @@
+import type { Card as CardType } from "@/game/logic";
 import React, { useEffect, useRef } from "react";
 import { Animated, StyleSheet } from "react-native";
-import type { Card as CardType } from "@/game/logic";
 import Card from "./Card";
 
 type AnimatedCardProps = {

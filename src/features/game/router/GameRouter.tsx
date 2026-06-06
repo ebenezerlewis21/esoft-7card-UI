@@ -15,14 +15,8 @@ function useGameLandscapeLifecycle(): void {
   }, []);
 }
 
-export class GameRouter {
-  getView(): React.ReactElement {
-    return <GameScreen />;
-  }
-}
-
 export default function GameRoute(): React.ReactElement {
   useGameLandscapeLifecycle();
 
-  return new GameRouter().getView();
+  return <GameScreen />;
 }
