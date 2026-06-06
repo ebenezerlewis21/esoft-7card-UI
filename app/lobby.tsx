@@ -12,20 +12,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import { BACKGROUNDS } from "../constants/backgrounds";
-import { CARD_BACKS } from "../constants/cardbacks";
 import {
   getActiveBackgroundId,
-  getActiveCardBackId,
-  getOwnedBackgroundIds,
-  getOwnedCardBackIds,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
-  setActiveBackgroundId,
-  setActiveCardBackId,
   setSoundEnabled,
   subscribeBackgroundSettings,
-  subscribeCardBackSettings,
   subscribeSoundEnabled,
 } from "../constants/settings";
 
@@ -41,17 +34,8 @@ export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
-  const [ownedBackgroundIds, setOwnedBackgroundIds] = React.useState(
-    () => new Set(getOwnedBackgroundIds()),
-  );
-  const [ownedCardBackIds, setOwnedCardBackIds] = React.useState(
-    () => new Set(getOwnedCardBackIds()),
-  );
   const [activeBackgroundId, setActiveBackgroundIdState] = React.useState(
     getActiveBackgroundId(),
-  );
-  const [activeCardBackId, setActiveCardBackIdState] = React.useState(
-    getActiveCardBackId(),
   );
   const winRatio = Math.round(
     (PLAYER_PROFILE.wins / Math.max(1, PLAYER_PROFILE.gamesPlayed)) * 100,
@@ -82,13 +66,7 @@ export default function LobbyScreen(): React.ReactElement {
     });
 
     const unsubscribeBackgrounds = subscribeBackgroundSettings(() => {
-      setOwnedBackgroundIds(new Set(getOwnedBackgroundIds()));
       setActiveBackgroundIdState(getActiveBackgroundId());
-    });
-
-    const unsubscribeCardBacks = subscribeCardBackSettings(() => {
-      setOwnedCardBackIds(new Set(getOwnedCardBackIds()));
-      setActiveCardBackIdState(getActiveCardBackId());
     });
 
     void initializeSoundSettings();
@@ -97,7 +75,6 @@ export default function LobbyScreen(): React.ReactElement {
     return () => {
       unsubscribe();
       unsubscribeBackgrounds();
-      unsubscribeCardBacks();
     };
   }, []);
 
@@ -290,98 +267,9 @@ export default function LobbyScreen(): React.ReactElement {
                 thumbColor={soundEnabled ? "#e9ffe9" : "#f2f2f2"}
               />
             </View>
-
-            <Text3D style={styles.modalSectionTitle}>Gameboard</Text3D>
-            <View style={styles.backgroundList}>
-              {BACKGROUNDS.filter((background) =>
-                ownedBackgroundIds.has(background.id),
-              ).map((background) => {
-                const owned = ownedBackgroundIds.has(background.id);
-                const active = activeBackgroundId === background.id;
-
-                return (
-                  <TouchableOpacity
-                    key={background.id}
-                    style={[
-                      styles.backgroundRow,
-                      { borderColor: background.accent },
-                      active && styles.backgroundRowActive,
-                    ]}
-                    activeOpacity={0.85}
-                    disabled={!owned}
-                    onPress={() => setActiveBackgroundId(background.id)}
-                  >
-                    <View
-                      style={[
-                        styles.backgroundSwatch,
-                        { backgroundColor: background.background },
-                      ]}
-                    />
-
-                    <View style={styles.backgroundMeta}>
-                      <Text3D style={styles.backgroundName}>
-                        {background.name}
-                      </Text3D>
-                      <Text3D style={styles.backgroundStatus}>
-                        {owned ? (active ? "Selected" : "Owned") : "Locked"}
-                      </Text3D>
-                    </View>
-
-                    <MaterialCommunityIcons
-                      name={active ? "check-circle" : "circle-outline"}
-                      size={20}
-                      color={
-                        owned ? background.accent : "rgba(255,255,255,0.35)"
-                      }
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text3D style={styles.modalSectionTitle}>Card</Text3D>
-            <View style={styles.backgroundList}>
-              {CARD_BACKS.filter((cardBack) =>
-                ownedCardBackIds.has(cardBack.id),
-              ).map((cardBack) => {
-                const active = activeCardBackId === cardBack.id;
-
-                return (
-                  <TouchableOpacity
-                    key={cardBack.id}
-                    style={[
-                      styles.backgroundRow,
-                      { borderColor: cardBack.accent },
-                      active && styles.backgroundRowActive,
-                    ]}
-                    activeOpacity={0.85}
-                    onPress={() => setActiveCardBackId(cardBack.id)}
-                  >
-                    <View
-                      style={[
-                        styles.backgroundSwatch,
-                        { backgroundColor: cardBack.color },
-                      ]}
-                    />
-
-                    <View style={styles.backgroundMeta}>
-                      <Text3D style={styles.backgroundName}>
-                        {cardBack.name}
-                      </Text3D>
-                      <Text3D style={styles.backgroundStatus}>
-                        {active ? "Selected" : "Owned"}
-                      </Text3D>
-                    </View>
-
-                    <MaterialCommunityIcons
-                      name={active ? "check-circle" : "circle-outline"}
-                      size={20}
-                      color={cardBack.accent}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <Text3D style={styles.settingsHint}>
+              Equip gameboards and cards from the Shop.
+            </Text3D>
 
             <TouchableOpacity
               style={styles.modalCloseBtn}
@@ -658,6 +546,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 15,
     fontWeight: "600",
+  },
+  settingsHint: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+    textAlign: "center",
   },
   backgroundList: {
     gap: 10,

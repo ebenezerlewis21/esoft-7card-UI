@@ -89,7 +89,10 @@ export default function ShopScreen(): React.ReactElement {
     if (!spendPlayerCoins(item.cost)) return;
 
     unlockBackground(item.id as BackgroundId);
-    setActiveBackgroundId(item.id as BackgroundId);
+  };
+
+  const equipBackground = (backgroundId: BackgroundId): void => {
+    setActiveBackgroundId(backgroundId);
   };
 
   const buyCardBack = (item: CardBackDefinition): void => {
@@ -98,7 +101,10 @@ export default function ShopScreen(): React.ReactElement {
     if (!spendPlayerCoins(item.cost)) return;
 
     unlockCardBack(item.id);
-    setActiveCardBackId(item.id);
+  };
+
+  const equipCardBack = (cardBackId: CardBackId): void => {
+    setActiveCardBackId(cardBackId);
   };
 
   return (
@@ -138,154 +144,200 @@ export default function ShopScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
       >
         <Text3D style={styles.sectionTitle}>Gameboards</Text3D>
-        {BACKGROUNDS.map((item) => {
-          const owned = ownedIds.has(item.id);
-          const active = activeBackgroundId === item.id;
-          const canBuy = coins >= item.cost && !owned;
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          snapToInterval={246}
+        >
+          {BACKGROUNDS.map((item) => {
+            const owned = ownedIds.has(item.id);
+            const active = activeBackgroundId === item.id;
+            const canBuy = coins >= item.cost && !owned;
+            const canEquip = owned && !active;
+            const canInteract = canBuy || canEquip;
 
-          return (
-            <View key={item.id} style={styles.card}>
-              <View
-                style={[styles.preview, { backgroundColor: item.background }]}
-              >
-                <View style={styles.previewGlow} />
-                <View style={styles.previewBadge}>
-                  <MaterialCommunityIcons
-                    name="image-filter-drama"
-                    size={18}
-                    color={item.accent}
-                  />
-                  <Text3D
-                    style={[styles.previewBadgeText, { color: item.accent }]}
-                  >
-                    Gameboard
-                  </Text3D>
-                </View>
-              </View>
-
-              <View style={styles.cardBody}>
-                <View style={styles.cardTitleRow}>
-                  <Text3D style={styles.cardTitle}>{item.name}</Text3D>
-                  {active ? (
-                    <View style={styles.activeChip}>
-                      <Text3D style={styles.activeChipText}>Active</Text3D>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.metaRow}>
-                  <View style={styles.costRow}>
+            return (
+              <View key={item.id} style={styles.card}>
+                <View
+                  style={[styles.preview, { backgroundColor: item.background }]}
+                >
+                  <View style={styles.previewGlow} />
+                  <View style={styles.previewBadge}>
                     <MaterialCommunityIcons
-                      name="diamond-stone"
-                      size={14}
-                      color="#f6d43a"
+                      name="image-filter-drama"
+                      size={18}
+                      color={item.accent}
                     />
-                    <Text3D style={styles.costText}>
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      }).format(item.cost)}
+                    <Text3D
+                      style={[styles.previewBadgeText, { color: item.accent }]}
+                    >
+                      Gameboard
+                    </Text3D>
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTitleRow}>
+                    <Text3D style={styles.cardTitle}>{item.name}</Text3D>
+                    {active ? (
+                      <View style={styles.activeChip}>
+                        <Text3D style={styles.activeChipText}>Active</Text3D>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.costRow}>
+                      <MaterialCommunityIcons
+                        name="diamond-stone"
+                        size={14}
+                        color="#f6d43a"
+                      />
+                      <Text3D style={styles.costText}>
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        }).format(item.cost)}
+                      </Text3D>
+                    </View>
+
+                    <Text3D style={styles.statusText}>
+                      {owned
+                        ? "Owned"
+                        : canBuy
+                          ? "Available"
+                          : "Need more coins"}
                     </Text3D>
                   </View>
 
-                  <Text3D style={styles.statusText}>
-                    {owned ? "Owned" : canBuy ? "Available" : "Need more coins"}
-                  </Text3D>
-                </View>
+                  <Pressable
+                    onPress={() => {
+                      if (canEquip) {
+                        equipBackground(item.id);
+                        return;
+                      }
 
-                <Pressable
-                  onPress={() => buyBackground(item)}
-                  disabled={!canBuy}
-                  style={({ pressed }) => [
-                    styles.buyButton,
-                    owned && styles.ownedButton,
-                    !canBuy && !owned && styles.disabledButton,
-                    pressed && canBuy && styles.pressedButton,
-                  ]}
-                >
-                  <Text3D style={styles.buyButtonText}>
-                    {owned ? "Owned" : "Buy Gameboard"}
-                  </Text3D>
-                </Pressable>
+                      buyBackground(item);
+                    }}
+                    disabled={!canInteract}
+                    style={({ pressed }) => [
+                      styles.buyButton,
+                      active && styles.ownedButton,
+                      canEquip && styles.equipButton,
+                      !canInteract && styles.disabledButton,
+                      pressed && canInteract && styles.pressedButton,
+                    ]}
+                  >
+                    <Text3D style={styles.buyButtonText}>
+                      {active ? "Active" : canEquip ? "Equip" : "Buy Gameboard"}
+                    </Text3D>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })}
+        </ScrollView>
 
         <Text3D style={styles.sectionTitle}>Cards</Text3D>
-        {CARD_BACKS.map((item) => {
-          const owned = ownedCardBackIds.has(item.id);
-          const active = activeCardBackId === item.id;
-          const canBuy = coins >= item.cost && !owned;
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          snapToInterval={246}
+        >
+          {CARD_BACKS.map((item) => {
+            const owned = ownedCardBackIds.has(item.id);
+            const active = activeCardBackId === item.id;
+            const canBuy = coins >= item.cost && !owned;
+            const canEquip = owned && !active;
+            const canInteract = canBuy || canEquip;
 
-          return (
-            <View key={item.id} style={styles.card}>
-              <View style={[styles.preview, { backgroundColor: item.color }]}>
-                <View style={styles.previewGlow} />
-                <View style={styles.previewBadge}>
-                  <MaterialCommunityIcons
-                    name="cards-playing-heart-multiple-outline"
-                    size={18}
-                    color={item.accent}
-                  />
-                  <Text3D
-                    style={[styles.previewBadgeText, { color: item.accent }]}
-                  >
-                    Card
-                  </Text3D>
-                </View>
-              </View>
-
-              <View style={styles.cardBody}>
-                <View style={styles.cardTitleRow}>
-                  <Text3D style={styles.cardTitle}>{item.name}</Text3D>
-                  {active ? (
-                    <View style={styles.activeChip}>
-                      <Text3D style={styles.activeChipText}>Active</Text3D>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.metaRow}>
-                  <View style={styles.costRow}>
+            return (
+              <View key={item.id} style={styles.card}>
+                <View style={[styles.preview, { backgroundColor: item.color }]}>
+                  <View style={styles.previewGlow} />
+                  <View style={styles.previewBadge}>
                     <MaterialCommunityIcons
-                      name="diamond-stone"
-                      size={14}
-                      color="#f6d43a"
+                      name="cards-playing-heart-multiple-outline"
+                      size={18}
+                      color={item.accent}
                     />
-                    <Text3D style={styles.costText}>
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      }).format(item.cost)}
+                    <Text3D
+                      style={[styles.previewBadgeText, { color: item.accent }]}
+                    >
+                      Card
+                    </Text3D>
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTitleRow}>
+                    <Text3D style={styles.cardTitle}>{item.name}</Text3D>
+                    {active ? (
+                      <View style={styles.activeChip}>
+                        <Text3D style={styles.activeChipText}>Active</Text3D>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.costRow}>
+                      <MaterialCommunityIcons
+                        name="diamond-stone"
+                        size={14}
+                        color="#f6d43a"
+                      />
+                      <Text3D style={styles.costText}>
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        }).format(item.cost)}
+                      </Text3D>
+                    </View>
+
+                    <Text3D style={styles.statusText}>
+                      {owned
+                        ? "Owned"
+                        : canBuy
+                          ? "Available"
+                          : "Need more coins"}
                     </Text3D>
                   </View>
 
-                  <Text3D style={styles.statusText}>
-                    {owned ? "Owned" : canBuy ? "Available" : "Need more coins"}
-                  </Text3D>
-                </View>
+                  <Pressable
+                    onPress={() => {
+                      if (canEquip) {
+                        equipCardBack(item.id);
+                        return;
+                      }
 
-                <Pressable
-                  onPress={() => buyCardBack(item)}
-                  disabled={!canBuy}
-                  style={({ pressed }) => [
-                    styles.buyButton,
-                    owned && styles.ownedButton,
-                    !canBuy && !owned && styles.disabledButton,
-                    pressed && canBuy && styles.pressedButton,
-                  ]}
-                >
-                  <Text3D style={styles.buyButtonText}>
-                    {owned ? "Owned" : "Buy Card"}
-                  </Text3D>
-                </Pressable>
+                      buyCardBack(item);
+                    }}
+                    disabled={!canInteract}
+                    style={({ pressed }) => [
+                      styles.buyButton,
+                      active && styles.ownedButton,
+                      canEquip && styles.equipButton,
+                      !canInteract && styles.disabledButton,
+                      pressed && canInteract && styles.pressedButton,
+                    ]}
+                  >
+                    <Text3D style={styles.buyButtonText}>
+                      {active ? "Active" : canEquip ? "Equip" : "Buy Card"}
+                    </Text3D>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })}
+        </ScrollView>
       </ScrollView>
     </SafeAreaView>
   );
@@ -346,9 +398,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   list: {
-    padding: 16,
+    paddingVertical: 16,
     gap: 14,
     paddingBottom: 24,
+  },
+  carouselContent: {
+    paddingHorizontal: 16,
+    gap: 10,
   },
   sectionTitle: {
     color: "#fdf0b4",
@@ -359,24 +415,25 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   card: {
-    borderRadius: 20,
+    width: 236,
+    borderRadius: 16,
     overflow: "hidden",
     backgroundColor: "rgba(0,0,0,0.22)",
     borderColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
   },
   preview: {
-    height: 132,
-    padding: 14,
+    height: 108,
+    padding: 10,
     justifyContent: "space-between",
   },
   previewGlow: {
     position: "absolute",
-    top: 16,
-    right: 16,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    top: 12,
+    right: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
   previewBadge: {
@@ -384,8 +441,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
@@ -395,8 +452,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   cardBody: {
-    padding: 14,
-    gap: 10,
+    padding: 11,
+    gap: 8,
   },
   cardTitleRow: {
     flexDirection: "row",
@@ -406,14 +463,14 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: "#ffffff",
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "800",
     flex: 1,
   },
   activeChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: "rgba(84, 214, 129, 0.2)",
     borderColor: "rgba(84, 214, 129, 0.35)",
@@ -446,9 +503,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   buyButton: {
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: "#f6d43a",
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: "center",
   },
   buyButtonText: {
@@ -459,6 +516,9 @@ const styles = StyleSheet.create({
   },
   ownedButton: {
     backgroundColor: "#7fd08b",
+  },
+  equipButton: {
+    backgroundColor: "#7ab8ff",
   },
   disabledButton: {
     backgroundColor: "rgba(255,255,255,0.16)",

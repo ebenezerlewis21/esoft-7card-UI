@@ -114,12 +114,7 @@ export function setActiveBackgroundId(backgroundId: BackgroundId): void {
   );
 }
 
-export function unlockBackground(backgroundId: BackgroundId): void {
-  if (ownedBackgroundIds.has(backgroundId)) return;
-
-  ownedBackgroundIds = new Set([...ownedBackgroundIds, backgroundId]);
-  backgroundListeners.forEach((listener) => listener());
-
+function persistOwnedBackgroundIds(): void {
   void AsyncStorage.setItem(
     OWNED_BACKGROUND_IDS_KEY,
     JSON.stringify(Array.from(ownedBackgroundIds)),
@@ -129,6 +124,96 @@ export function unlockBackground(backgroundId: BackgroundId): void {
       JSON.stringify(Array.from(ownedBackgroundIds)),
     );
   });
+}
+
+function persistOwnedCardBackIds(): void {
+  void AsyncStorage.setItem(
+    OWNED_CARD_BACK_IDS_KEY,
+    JSON.stringify(Array.from(ownedCardBackIds)),
+  ).catch(() => {
+    writeToWebStorage(
+      OWNED_CARD_BACK_IDS_KEY,
+      JSON.stringify(Array.from(ownedCardBackIds)),
+    );
+  });
+}
+
+function persistActiveBackgroundId(): void {
+  void AsyncStorage.setItem(ACTIVE_BACKGROUND_ID_KEY, activeBackgroundId).catch(
+    () => {
+      writeToWebStorage(ACTIVE_BACKGROUND_ID_KEY, activeBackgroundId);
+    },
+  );
+}
+
+function persistActiveCardBackId(): void {
+  void AsyncStorage.setItem(ACTIVE_CARD_BACK_ID_KEY, activeCardBackId).catch(
+    () => {
+      writeToWebStorage(ACTIVE_CARD_BACK_ID_KEY, activeCardBackId);
+    },
+  );
+}
+
+export function unlockBackground(backgroundId: BackgroundId): boolean {
+  if (ownedBackgroundIds.has(backgroundId)) return true;
+
+  ownedBackgroundIds = new Set([...ownedBackgroundIds, backgroundId]);
+  backgroundListeners.forEach((listener) => listener());
+  persistOwnedBackgroundIds();
+
+  return true;
+}
+
+export function removeOwnedBackground(backgroundId: BackgroundId): boolean {
+  if (!ownedBackgroundIds.has(backgroundId)) return false;
+  if (ownedBackgroundIds.size <= 1) return false;
+
+  const nextOwned = Array.from(ownedBackgroundIds).filter(
+    (id) => id !== backgroundId,
+  );
+
+  if (nextOwned.length === 0) return false;
+
+  ownedBackgroundIds = new Set(nextOwned);
+
+  if (!ownedBackgroundIds.has(activeBackgroundId)) {
+    activeBackgroundId = nextOwned[0] ?? DEFAULT_BACKGROUND_ID;
+    persistActiveBackgroundId();
+  }
+
+  backgroundListeners.forEach((listener) => listener());
+  persistOwnedBackgroundIds();
+
+  return true;
+}
+
+export function replaceOwnedBackground(
+  backgroundToRemove: BackgroundId,
+  backgroundToAdd: BackgroundId,
+): boolean {
+  if (backgroundToRemove === backgroundToAdd) return false;
+  if (!ownedBackgroundIds.has(backgroundToRemove)) return false;
+  if (ownedBackgroundIds.has(backgroundToAdd)) return true;
+
+  const nextOwned = Array.from(ownedBackgroundIds)
+    .filter((id) => id !== backgroundToRemove)
+    .concat(backgroundToAdd);
+
+  if (nextOwned.length === 0) {
+    return false;
+  }
+
+  ownedBackgroundIds = new Set(nextOwned);
+
+  if (!ownedBackgroundIds.has(activeBackgroundId)) {
+    activeBackgroundId = backgroundToAdd;
+    persistActiveBackgroundId();
+  }
+
+  backgroundListeners.forEach((listener) => listener());
+  persistOwnedBackgroundIds();
+
+  return true;
 }
 
 export function setActiveCardBackId(cardBackId: CardBackId): void {
@@ -144,21 +229,66 @@ export function setActiveCardBackId(cardBackId: CardBackId): void {
   );
 }
 
-export function unlockCardBack(cardBackId: CardBackId): void {
-  if (ownedCardBackIds.has(cardBackId)) return;
+export function unlockCardBack(cardBackId: CardBackId): boolean {
+  if (ownedCardBackIds.has(cardBackId)) return true;
 
   ownedCardBackIds = new Set([...ownedCardBackIds, cardBackId]);
   cardBackListeners.forEach((listener) => listener());
+  persistOwnedCardBackIds();
 
-  void AsyncStorage.setItem(
-    OWNED_CARD_BACK_IDS_KEY,
-    JSON.stringify(Array.from(ownedCardBackIds)),
-  ).catch(() => {
-    writeToWebStorage(
-      OWNED_CARD_BACK_IDS_KEY,
-      JSON.stringify(Array.from(ownedCardBackIds)),
-    );
-  });
+  return true;
+}
+
+export function removeOwnedCardBack(cardBackId: CardBackId): boolean {
+  if (!ownedCardBackIds.has(cardBackId)) return false;
+  if (ownedCardBackIds.size <= 1) return false;
+
+  const nextOwned = Array.from(ownedCardBackIds).filter(
+    (id) => id !== cardBackId,
+  );
+
+  if (nextOwned.length === 0) return false;
+
+  ownedCardBackIds = new Set(nextOwned);
+
+  if (!ownedCardBackIds.has(activeCardBackId)) {
+    activeCardBackId = nextOwned[0] ?? DEFAULT_CARD_BACK_ID;
+    persistActiveCardBackId();
+  }
+
+  cardBackListeners.forEach((listener) => listener());
+  persistOwnedCardBackIds();
+
+  return true;
+}
+
+export function replaceOwnedCardBack(
+  cardBackToRemove: CardBackId,
+  cardBackToAdd: CardBackId,
+): boolean {
+  if (cardBackToRemove === cardBackToAdd) return false;
+  if (!ownedCardBackIds.has(cardBackToRemove)) return false;
+  if (ownedCardBackIds.has(cardBackToAdd)) return true;
+
+  const nextOwned = Array.from(ownedCardBackIds)
+    .filter((id) => id !== cardBackToRemove)
+    .concat(cardBackToAdd);
+
+  if (nextOwned.length === 0) {
+    return false;
+  }
+
+  ownedCardBackIds = new Set(nextOwned);
+
+  if (!ownedCardBackIds.has(activeCardBackId)) {
+    activeCardBackId = cardBackToAdd;
+    persistActiveCardBackId();
+  }
+
+  cardBackListeners.forEach((listener) => listener());
+  persistOwnedCardBackIds();
+
+  return true;
 }
 
 function readSoundEnabledFromWebStorage(): string | null {
@@ -223,6 +353,29 @@ function normalizeBackgroundId(value: string | null): BackgroundId | null {
   return matched ? matched.id : null;
 }
 
+function normalizeCardBackId(value: string | null): CardBackId | null {
+  if (!value) return null;
+
+  const matched = CARD_BACKS.find((item) => item.id === value);
+  return matched ? matched.id : null;
+}
+
+function normalizeOwnedIds<T extends string>(ids: T[], fallbackId: T): Set<T> {
+  const unique: T[] = [];
+
+  for (const id of ids) {
+    if (!unique.includes(id)) {
+      unique.push(id);
+    }
+  }
+
+  if (unique.length === 0) {
+    unique.push(fallbackId);
+  }
+
+  return new Set(unique);
+}
+
 async function loadProfileSettings(): Promise<void> {
   let storedCoins: string | null = null;
   let storedOwned: string | null = null;
@@ -261,9 +414,10 @@ async function loadProfileSettings(): Promise<void> {
           )
           .filter((value): value is BackgroundId => value !== null);
 
-        if (nextOwned.length > 0) {
-          ownedBackgroundIds = new Set(nextOwned);
-        }
+        ownedBackgroundIds = normalizeOwnedIds(
+          nextOwned,
+          DEFAULT_BACKGROUND_ID,
+        );
       }
     } catch {
       // Keep defaults if parsing fails.
@@ -276,15 +430,11 @@ async function loadProfileSettings(): Promise<void> {
       if (Array.isArray(parsedOwned)) {
         const nextOwned = parsedOwned
           .map((value) =>
-            typeof value === "string"
-              ? (CARD_BACKS.find((item) => item.id === value)?.id ?? null)
-              : null,
+            normalizeCardBackId(typeof value === "string" ? value : null),
           )
           .filter((value): value is CardBackId => value !== null);
 
-        if (nextOwned.length > 0) {
-          ownedCardBackIds = new Set(nextOwned);
-        }
+        ownedCardBackIds = normalizeOwnedIds(nextOwned, DEFAULT_CARD_BACK_ID);
       }
     } catch {
       // Keep defaults if parsing fails.
