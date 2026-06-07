@@ -37,7 +37,10 @@ export const Feature: {
   },
   thirdPartyAuth: {
     enabled: () =>
-      readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_THIRD_PARTY_AUTH"), true),
+      readBooleanEnv(
+        getPublicEnv("EXPO_PUBLIC_FEATURE_THIRD_PARTY_AUTH"),
+        true,
+      ),
   },
   skeleton: {
     enabled: () =>

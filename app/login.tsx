@@ -28,7 +28,10 @@ const THIRD_PARTY_AUTH_URLS: Record<ThirdPartyProvider, string> = {
   facebook: "https://www.facebook.com/login",
 };
 
-const debugAuth = (message: string, payload?: Record<string, unknown>): void => {
+const debugAuth = (
+  message: string,
+  payload?: Record<string, unknown>,
+): void => {
   if (!__DEV__) return;
   if (payload) {
     console.log(`[login] ${message}`, payload);
@@ -44,8 +47,7 @@ export default function LoginScreen(): React.ReactElement {
   const isTestEnvironment = process.env.EXPO_PUBLIC_APP_ENV === "test";
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
   const devLoginPath = process.env.EXPO_PUBLIC_DEV_LOGIN_PATH ?? "dev/login";
-  const devSignupPath =
-    process.env.EXPO_PUBLIC_DEV_SIGNUP_PATH ?? "dev/signup";
+  const devSignupPath = process.env.EXPO_PUBLIC_DEV_SIGNUP_PATH ?? "dev/signup";
 
   const [authMode, setAuthMode] = React.useState<AuthMode>("signin");
   const [username, setUsername] = React.useState("");
@@ -292,7 +294,9 @@ export default function LoginScreen(): React.ReactElement {
       testAccounts[trimmedUsername] !== password
     ) {
       debugAuth("test login rejected", { username: trimmedUsername });
-      setErrorMessage("Invalid login for test environment. Please sign up first.");
+      setErrorMessage(
+        "Invalid login for test environment. Please sign up first.",
+      );
       return;
     }
 
@@ -307,7 +311,10 @@ export default function LoginScreen(): React.ReactElement {
           ...testAccounts,
           [trimmedUsername]: password,
         };
-        await AsyncStorage.setItem(TEST_ACCOUNTS_KEY, JSON.stringify(nextAccounts));
+        await AsyncStorage.setItem(
+          TEST_ACCOUNTS_KEY,
+          JSON.stringify(nextAccounts),
+        );
       } catch {
         setErrorMessage("Unable to create test account.");
         return;
@@ -637,9 +644,7 @@ export default function LoginScreen(): React.ReactElement {
           {isThirdPartyAuthEnabled ? (
             <View style={styles.socialSection}>
               <Text3D style={styles.socialLabel} animate={false}>
-                {authMode === "signup"
-                  ? "Or sign up with"
-                  : "Or continue with"}
+                {authMode === "signup" ? "Or sign up with" : "Or continue with"}
               </Text3D>
 
               <View style={styles.socialRow}>

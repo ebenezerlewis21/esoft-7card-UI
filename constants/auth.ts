@@ -57,7 +57,9 @@ const writeProfileMap = async (profiles: UserProfileMap): Promise<void> => {
   await AsyncStorage.setItem(USER_PROFILES_KEY, JSON.stringify(profiles));
 };
 
-export const ensureUserProfile = async (username: string): Promise<UserProfile> => {
+export const ensureUserProfile = async (
+  username: string,
+): Promise<UserProfile> => {
   const trimmedUsername = username.trim();
   const profiles = await readProfileMap();
   const existing = profiles[trimmedUsername];
