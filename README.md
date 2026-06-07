@@ -16,6 +16,16 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+### Environments
+
+Use these scripts to run with dedicated environment files:
+
+- npm run start:dev
+- npm run start:test
+- npm run start:prod
+
+Each script sets `NODE_ENV` and loads matching values from `.env.development`, `.env.test`, or `.env.production`.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)

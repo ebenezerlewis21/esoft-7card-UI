@@ -91,7 +91,7 @@ export default function PlayerHand({
     idx: null,
     time: 0,
   });
-  const doubleTapWindowMs = 280;
+  const doubleTapWindowMs = 460;
 
   const getCardPosition = useCallback(
     (idx: number) => {
@@ -331,13 +331,20 @@ export default function PlayerHand({
                           if ((canReorder || canSelect) && onCardDoubleTap) {
                             const now = Date.now();
                             const lastTap = lastTapRef.current;
-                            if (
-                              lastTap.idx === i &&
-                              now - lastTap.time <= doubleTapWindowMs
-                            ) {
+                            const isSameCard = lastTap.idx === i;
+                            const withinWindow =
+                              now - lastTap.time <= doubleTapWindowMs;
+
+                            if (isSameCard && withinWindow) {
                               lastTapRef.current = { idx: null, time: 0 };
                               onCardDoubleTap?.(i, position);
                               return;
+                            }
+
+                            // Reset stale tap when crossing the threshold to avoid
+                            // needing extra taps after a near-miss.
+                            if (!withinWindow) {
+                              lastTapRef.current = { idx: null, time: 0 };
                             }
 
                             lastTapRef.current = { idx: i, time: now };

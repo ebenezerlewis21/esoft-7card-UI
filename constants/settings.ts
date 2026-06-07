@@ -8,6 +8,7 @@ import { CARD_BACKS, DEFAULT_CARD_BACK_ID, type CardBackId } from "./cardbacks";
 
 const SOUND_ENABLED_KEY = "@settings/soundEnabled";
 const TURN_ALERT_MODE_KEY = "@settings/turnAlertMode";
+const AI_DIFFICULTY_KEY = "@settings/aiDifficulty";
 const PLAYER_COINS_KEY = "@profile/playerCoins";
 const OWNED_BACKGROUND_IDS_KEY = "@profile/ownedBackgroundIds";
 const ACTIVE_BACKGROUND_ID_KEY = "@profile/activeBackgroundId";
@@ -21,6 +22,9 @@ const soundListeners = new Set<(enabled: boolean) => void>();
 export type TurnAlertMode = "vibrate" | "none";
 let turnAlertMode: TurnAlertMode = "vibrate";
 const turnAlertModeListeners = new Set<(mode: TurnAlertMode) => void>();
+export type AiDifficulty = "beginner" | "pro" | "advance" | "expert";
+let aiDifficulty: AiDifficulty = "pro";
+const aiDifficultyListeners = new Set<(mode: AiDifficulty) => void>();
 let hydratePromise: Promise<void> | null = null;
 
 let playerCoins = INITIAL_PLAYER_COINS;
@@ -42,6 +46,10 @@ export function isSoundEnabled(): boolean {
 
 export function getTurnAlertMode(): TurnAlertMode {
   return turnAlertMode;
+}
+
+export function getAiDifficulty(): AiDifficulty {
+  return aiDifficulty;
 }
 
 export function getPlayerCoins(): number {
@@ -376,6 +384,33 @@ async function loadTurnAlertMode(): Promise<void> {
   });
 }
 
+async function loadAiDifficulty(): Promise<void> {
+  let storedValue: string | null = null;
+
+  try {
+    storedValue = await AsyncStorage.getItem(AI_DIFFICULTY_KEY);
+  } catch {
+    storedValue = readFromWebStorage(AI_DIFFICULTY_KEY);
+  }
+
+  const normalized = storedValue?.trim().toLowerCase();
+  const nextMode: AiDifficulty =
+    normalized === "beginner" ||
+    normalized === "advance" ||
+    normalized === "expert"
+      ? normalized
+      : "pro";
+
+  if (nextMode !== aiDifficulty) {
+    aiDifficulty = nextMode;
+    aiDifficultyListeners.forEach((listener) => listener(aiDifficulty));
+  }
+
+  void AsyncStorage.setItem(AI_DIFFICULTY_KEY, nextMode).catch(() => {
+    writeToWebStorage(AI_DIFFICULTY_KEY, nextMode);
+  });
+}
+
 function normalizeBackgroundId(value: string | null): BackgroundId | null {
   if (!value) return null;
 
@@ -512,6 +547,7 @@ export function initializeSoundSettings(): Promise<void> {
     hydratePromise = Promise.all([
       loadSoundEnabled(),
       loadTurnAlertMode(),
+      loadAiDifficulty(),
     ]).then(() => undefined);
   }
 
@@ -524,6 +560,15 @@ export function setTurnAlertMode(mode: TurnAlertMode): void {
 
   void AsyncStorage.setItem(TURN_ALERT_MODE_KEY, turnAlertMode).catch(() => {
     writeToWebStorage(TURN_ALERT_MODE_KEY, turnAlertMode);
+  });
+}
+
+export function setAiDifficulty(mode: AiDifficulty): void {
+  aiDifficulty = mode;
+  aiDifficultyListeners.forEach((listener) => listener(aiDifficulty));
+
+  void AsyncStorage.setItem(AI_DIFFICULTY_KEY, aiDifficulty).catch(() => {
+    writeToWebStorage(AI_DIFFICULTY_KEY, aiDifficulty);
   });
 }
 
@@ -554,5 +599,14 @@ export function subscribeTurnAlertMode(
   turnAlertModeListeners.add(listener);
   return () => {
     turnAlertModeListeners.delete(listener);
+  };
+}
+
+export function subscribeAiDifficulty(
+  listener: (mode: AiDifficulty) => void,
+): () => void {
+  aiDifficultyListeners.add(listener);
+  return () => {
+    aiDifficultyListeners.delete(listener);
   };
 }

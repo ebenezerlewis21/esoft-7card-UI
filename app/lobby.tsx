@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
@@ -11,40 +12,50 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
+import { clearCurrentUsername, getCurrentUserProfile } from "../constants/auth";
 import { BACKGROUNDS } from "../constants/backgrounds";
 import {
   getActiveBackgroundId,
+  getAiDifficulty,
   getTurnAlertMode,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
+  setAiDifficulty,
   setSoundEnabled,
   setTurnAlertMode,
   subscribeBackgroundSettings,
   subscribeSoundEnabled,
   subscribeTurnAlertMode,
+  type AiDifficulty,
   type TurnAlertMode,
 } from "../constants/settings";
 
-const PLAYER_PROFILE = {
-  name: "Card Shark",
-  wins: 47,
-  gamesPlayed: 82,
-  rank: "Gold II",
-  coins: 12840,
+const DEFAULT_PROFILE = {
+  name: "Player",
+  wins: 0,
+  gamesPlayed: 0,
+  rank: "Unranked",
+  coins: 0,
 };
+
+const SAVED_LOGIN_KEY = "@auth/savedLogin";
 
 export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [playModeOpen, setPlayModeOpen] = React.useState(false);
+  const [playerProfile, setPlayerProfile] = React.useState(DEFAULT_PROFILE);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
   const [turnAlertMode, setTurnAlertModeState] =
     React.useState<TurnAlertMode>(getTurnAlertMode());
+  const [selectedAiDifficulty, setSelectedAiDifficulty] =
+    React.useState<AiDifficulty>(getAiDifficulty());
   const [activeBackgroundId, setActiveBackgroundIdState] = React.useState(
     getActiveBackgroundId(),
   );
   const winRatio = Math.round(
-    (PLAYER_PROFILE.wins / Math.max(1, PLAYER_PROFILE.gamesPlayed)) * 100,
+    (playerProfile.wins / Math.max(1, playerProfile.gamesPlayed)) * 100,
   );
   const coinsDisplay = React.useMemo(
     () =>
@@ -52,8 +63,8 @@ export default function LobbyScreen(): React.ReactElement {
         style: "currency",
         currency: "USD",
         maximumFractionDigits: 0,
-      }).format(PLAYER_PROFILE.coins),
-    [],
+      }).format(playerProfile.coins),
+    [playerProfile.coins],
   );
 
   React.useEffect(() => {
@@ -67,6 +78,23 @@ export default function LobbyScreen(): React.ReactElement {
   }, []);
 
   React.useEffect(() => {
+    let cancelled = false;
+
+    const loadCurrentProfile = async (): Promise<void> => {
+      const profile = await getCurrentUserProfile();
+      if (!profile || cancelled) return;
+
+      setPlayerProfile({
+        name: profile.username,
+        wins: profile.wins,
+        gamesPlayed: profile.gamesPlayed,
+        rank: profile.rank,
+        coins: profile.coins,
+      });
+    };
+
+    void loadCurrentProfile();
+
     const unsubscribe = subscribeSoundEnabled((enabled) => {
       setSoundEnabledState(enabled);
     });
@@ -83,6 +111,7 @@ export default function LobbyScreen(): React.ReactElement {
     void initializeProfileSettings();
 
     return () => {
+      cancelled = true;
       unsubscribe();
       unsubscribeBackgrounds();
       unsubscribeTurnAlertMode();
@@ -95,6 +124,18 @@ export default function LobbyScreen(): React.ReactElement {
       BACKGROUNDS[0],
     [activeBackgroundId],
   );
+
+  const handleSignOut = React.useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
+      await clearCurrentUsername();
+    } catch {
+      // Continue sign-out flow even if storage removal fails.
+    }
+
+    setSettingsOpen(false);
+    router.replace("/login");
+  }, [router]);
 
   return (
     <SafeAreaView
@@ -150,7 +191,7 @@ export default function LobbyScreen(): React.ReactElement {
         <Text3D style={styles.subtitle}>Choose a mode to start</Text3D>
 
         <View style={styles.profileCard}>
-          <Text3D style={styles.profileName}>{PLAYER_PROFILE.name}</Text3D>
+          <Text3D style={styles.profileName}>{playerProfile.name}</Text3D>
 
           <View style={styles.profileStatsGrid}>
             <View style={styles.statItem}>
@@ -161,13 +202,13 @@ export default function LobbyScreen(): React.ReactElement {
             <View style={styles.statItem}>
               <Text3D style={styles.statLabel}>Games</Text3D>
               <Text3D style={styles.statValue}>
-                {PLAYER_PROFILE.gamesPlayed}
+                {playerProfile.gamesPlayed}
               </Text3D>
             </View>
 
             <View style={styles.statItem}>
               <Text3D style={styles.statLabel}>Ranked</Text3D>
-              <Text3D style={styles.statValue}>{PLAYER_PROFILE.rank}</Text3D>
+              <Text3D style={styles.statValue}>{playerProfile.rank}</Text3D>
             </View>
 
             <View style={styles.statItem}>
@@ -191,7 +232,10 @@ export default function LobbyScreen(): React.ReactElement {
           <TouchableOpacity
             style={[styles.diamondButton, styles.playButton, styles.actionTop]}
             activeOpacity={0.85}
-            onPress={() => router.push("/game")}
+            onPress={() => {
+              setSelectedAiDifficulty(getAiDifficulty());
+              setPlayModeOpen(true);
+            }}
           >
             <View style={styles.diamondButtonContent}>
               <Text3D style={[styles.diamondButtonText, styles.playButtonText]}>
@@ -296,6 +340,7 @@ export default function LobbyScreen(): React.ReactElement {
                 />
               </View>
             </View>
+
             <Text3D style={styles.settingsHint}>
               Equip gameboards and cards from the Shop.
             </Text3D>
@@ -306,6 +351,90 @@ export default function LobbyScreen(): React.ReactElement {
               onPress={() => setSettingsOpen(false)}
             >
               <Text3D style={styles.modalCloseText}>Done</Text3D>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                void handleSignOut();
+              }}
+            >
+              <Text3D style={styles.signOutText}>Sign Out</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={playModeOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPlayModeOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text3D style={styles.modalTitle}>Choose AI Difficulty</Text3D>
+
+            <View style={styles.aiModeSection}>
+              <View style={styles.aiModeOptionsRow}>
+                {(
+                  [
+                    { label: "Beginner", value: "beginner" as const },
+                    { label: "Pro", value: "pro" as const },
+                    { label: "Advance", value: "advance" as const },
+                    { label: "Expert", value: "expert" as const },
+                  ] as const
+                ).map((option) => {
+                  const active = selectedAiDifficulty === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.aiModeOptionBtn,
+                        active && styles.aiModeOptionBtnActive,
+                      ]}
+                      onPress={() => {
+                        setSelectedAiDifficulty(option.value);
+                      }}
+                    >
+                      <Text3D
+                        style={[
+                          styles.aiModeOptionText,
+                          active && styles.aiModeOptionTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text3D>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <Text3D style={styles.settingsHint}>
+              Select a difficulty before starting Play vs Computer.
+            </Text3D>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setAiDifficulty(selectedAiDifficulty);
+                setPlayModeOpen(false);
+                router.push("/game");
+              }}
+            >
+              <Text3D style={styles.modalCloseText}>Start Match</Text3D>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.playModeCancelBtn}
+              activeOpacity={0.85}
+              onPress={() => setPlayModeOpen(false)}
+            >
+              <Text3D style={styles.playModeCancelText}>Cancel</Text3D>
             </TouchableOpacity>
           </View>
         </View>
@@ -573,6 +702,50 @@ const styles = StyleSheet.create({
   turnAlertSection: {
     marginBottom: 14,
   },
+  aiModeSection: {
+    marginBottom: 14,
+    gap: 10,
+  },
+  aiModeOptionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  aiModeOptionBtn: {
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+    minWidth: 76,
+    alignItems: "center",
+  },
+  aiModeOptionBtnActive: {
+    borderColor: "rgba(246,212,58,0.95)",
+    backgroundColor: "rgba(246,212,58,0.16)",
+  },
+  aiModeOptionText: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  aiModeOptionTextActive: {
+    color: "#fdf0b4",
+  },
+  playModeCancelBtn: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    paddingVertical: 9,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  playModeCancelText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 13,
+  },
   settingsHint: {
     color: "rgba(255,255,255,0.82)",
     fontSize: 13,
@@ -590,5 +763,19 @@ const styles = StyleSheet.create({
     color: "#1a1a2e",
     fontWeight: "bold",
     fontSize: 14,
+  },
+  signOutBtn: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    paddingVertical: 9,
+    alignItems: "center",
+    marginTop: 10,
+    backgroundColor: "rgba(147, 24, 24, 0.45)",
+  },
+  signOutText: {
+    color: "#ffe6e6",
+    fontWeight: "700",
+    fontSize: 13,
   },
 });

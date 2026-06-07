@@ -34,6 +34,8 @@ export type AiDecision =
   | { action: "takeDiscard"; swapIdx: number }
   | { action: "drawDeck" };
 
+export type AiDifficulty = "beginner" | "pro" | "advance" | "expert";
+
 export const SUITS: Suit[] = ["♠", "♥", "♦", "♣"];
 export const RANKS: Rank[] = [
   "A",
@@ -258,49 +260,154 @@ export function calcHandScore(hand: Card[]): number {
   }, 0);
 }
 
-export function aiDecide(hand: Card[], discardTop: Card | null): AiDecision {
+function getBestSwapGain(
+  hand: Card[],
+  incomingCard: Card,
+): { bestGain: number; bestIdx: number; bestDropValue: number } {
   const currentScore = calcHandScore(hand);
-  const MIN_DISCARD_GAIN_TO_TAKE = 2;
+  let bestGain = Number.NEGATIVE_INFINITY;
+  let bestIdx = -1;
+  let bestDropValue = Number.NEGATIVE_INFINITY;
+
+  for (let i = 0; i < hand.length; i++) {
+    const trial = hand.slice();
+    trial[i] = incomingCard;
+    const trialScore = calcHandScore(trial);
+    const gain = currentScore - trialScore;
+    const dropped = hand[i].rank === "A" ? 1 : RANK_VAL[hand[i].rank];
+
+    if (gain > bestGain || (gain === bestGain && dropped > bestDropValue)) {
+      bestGain = gain;
+      bestIdx = i;
+      bestDropValue = dropped;
+    }
+  }
+
+  return { bestGain, bestIdx, bestDropValue };
+}
+
+export function aiDecide(
+  hand: Card[],
+  discardTop: Card | null,
+  options?: { difficulty?: AiDifficulty; deckPreview?: Card[] },
+): AiDecision {
+  const difficulty = options?.difficulty ?? "pro";
+  const MIN_DISCARD_GAIN_TO_TAKE =
+    difficulty === "beginner" ? 4 : difficulty === "pro" ? 2 : 1;
 
   if (discardTop) {
-    let bestGain = 0;
-    let bestIdx = -1;
-    for (let i = 0; i < hand.length; i++) {
-      const trial = hand.slice();
-      trial[i] = discardTop;
-      const trialScore = calcHandScore(trial);
-      const gain = currentScore - trialScore;
-      if (gain > bestGain) {
-        bestGain = gain;
-        bestIdx = i;
+    const discardSwap = getBestSwapGain(hand, discardTop);
+
+    if (difficulty === "expert") {
+      const preview = (options?.deckPreview ?? []).slice(0, 2);
+      let bestDeckGain = 0;
+
+      for (const peekCard of preview) {
+        const deckSwap = getBestSwapGain(hand, peekCard);
+        bestDeckGain = Math.max(bestDeckGain, deckSwap.bestGain);
       }
+
+      if (
+        discardSwap.bestIdx >= 0 &&
+        discardSwap.bestGain >= MIN_DISCARD_GAIN_TO_TAKE &&
+        discardSwap.bestGain >= bestDeckGain
+      ) {
+        return { action: "takeDiscard", swapIdx: discardSwap.bestIdx };
+      }
+      return { action: "drawDeck" };
     }
-    if (bestIdx >= 0 && bestGain >= MIN_DISCARD_GAIN_TO_TAKE) {
-      return { action: "takeDiscard", swapIdx: bestIdx };
+
+    if (
+      discardSwap.bestIdx >= 0 &&
+      discardSwap.bestGain >= MIN_DISCARD_GAIN_TO_TAKE
+    ) {
+      if (
+        difficulty === "beginner" &&
+        discardSwap.bestGain <= 6 &&
+        Math.random() < 0.4
+      ) {
+        return { action: "drawDeck" };
+      }
+
+      return { action: "takeDiscard", swapIdx: discardSwap.bestIdx };
     }
   }
 
   return { action: "drawDeck" };
 }
 
-export function aiDecideSwap(hand: Card[], drawnCard: Card): number {
-  const currentScore = calcHandScore(hand);
-  let bestGain = 0;
-  let bestIdx = -1;
-  for (let i = 0; i < hand.length; i++) {
-    const trial = hand.slice();
-    trial[i] = drawnCard;
-    const trialScore = calcHandScore(trial);
-    const gain = currentScore - trialScore;
-    if (gain > bestGain) {
-      bestGain = gain;
-      bestIdx = i;
+export function aiDecideSwap(
+  hand: Card[],
+  drawnCard: Card,
+  options?: { difficulty?: AiDifficulty },
+): number {
+  const difficulty = options?.difficulty ?? "pro";
+  const bestSwap = getBestSwapGain(hand, drawnCard);
+
+  if (difficulty === "beginner") {
+    if (bestSwap.bestGain <= 0) return -1;
+    if (bestSwap.bestGain <= 2 && Math.random() < 0.45) return -1;
+    if (Math.random() < 0.2) {
+      return Math.floor(Math.random() * hand.length);
     }
+    return bestSwap.bestIdx;
   }
-  return bestIdx;
+
+  if (bestSwap.bestGain <= 0) return -1;
+  return bestSwap.bestIdx;
 }
 
-export function aiShouldStop(hand: Card[]): boolean {
+export function aiShouldStop(
+  hand: Card[],
+  options?: { difficulty?: AiDifficulty; opponentHands?: Card[][] },
+): boolean {
+  const difficulty = options?.difficulty ?? "pro";
   const score = calcHandScore(hand);
-  return score <= 7 && Math.random() < 0.45;
+  const opponentScores = (options?.opponentHands ?? []).map((cards) =>
+    calcHandScore(cards),
+  );
+  const bestOpponentScore =
+    opponentScores.length > 0
+      ? Math.min(...opponentScores)
+      : Number.POSITIVE_INFINITY;
+  const scoreLead = bestOpponentScore - score;
+
+  if (Number.isFinite(bestOpponentScore)) {
+    if (difficulty === "expert" && score <= 7 && scoreLead >= 0) {
+      return true;
+    }
+
+    if (difficulty === "advance" && score <= 7 && scoreLead >= 1) {
+      return true;
+    }
+
+    if (difficulty === "pro" && score <= 7 && scoreLead >= 2) {
+      return true;
+    }
+
+    if (difficulty === "beginner" && score <= 8 && scoreLead >= 3) {
+      return true;
+    }
+  }
+
+  if (difficulty === "beginner") {
+    return (
+      (score <= 11 && Math.random() < 0.3) ||
+      (score <= 8 && Math.random() < 0.25)
+    );
+  }
+
+  if (difficulty === "pro") {
+    return score <= 7 && Math.random() < 0.45;
+  }
+
+  if (difficulty === "advance") {
+    return score <= 5 || (score <= 6 && Math.random() < 0.72);
+  }
+
+  return (
+    score <= 5 ||
+    (score <= 6 && Math.random() < 0.9) ||
+    (score <= 7 && Math.random() < 0.35)
+  );
 }

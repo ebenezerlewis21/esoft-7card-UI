@@ -10,14 +10,17 @@ import { Feature } from "@/constants/feature";
 import {
   getActiveBackgroundId,
   getActiveCardBackId,
+  getAiDifficulty,
   getTurnAlertMode,
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
+  subscribeAiDifficulty,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
   subscribeSoundEnabled,
   subscribeTurnAlertMode,
+  type AiDifficulty,
   type TurnAlertMode,
 } from "@/constants/settings";
 import {
@@ -86,6 +89,8 @@ export default function GameScreen(): React.ReactElement {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
   const [turnAlertMode, setTurnAlertMode] =
     useState<TurnAlertMode>(getTurnAlertMode());
+  const [aiDifficulty, setAiDifficulty] =
+    useState<AiDifficulty>(getAiDifficulty());
   const [matchWins, setMatchWins] = useState<number[]>([0, 0, 0]);
   const [matchWinnerIdx, setMatchWinnerIdx] = useState<number | null>(null);
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
@@ -127,6 +132,7 @@ export default function GameScreen(): React.ReactElement {
   const shuffleTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const swapSoundTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const roundScoredRef = useRef<boolean>(false);
+  const shuffleRunIdRef = useRef<number>(0);
   const deckToastAnimRef = useRef(new Animated.Value(0));
   const deckToastRunIdRef = useRef<number>(0);
   const initialDeckCountRef = useRef<number>(state.deck.length);
@@ -173,9 +179,14 @@ export default function GameScreen(): React.ReactElement {
       setTurnAlertMode(mode);
     });
 
+    const unsubscribeAiDifficulty = subscribeAiDifficulty((mode) => {
+      setAiDifficulty(mode);
+    });
+
     return () => {
       unsubscribeSound();
       unsubscribeTurnAlertMode();
+      unsubscribeAiDifficulty();
     };
   }, []);
 
@@ -296,6 +307,7 @@ export default function GameScreen(): React.ReactElement {
   }, [soundEnabled, swapAudio, swapAudioStatus.isLoaded]);
 
   const clearShuffleTimers = useCallback(() => {
+    shuffleRunIdRef.current += 1;
     shuffleTimersRef.current.forEach((timer) => clearTimeout(timer));
     shuffleTimersRef.current = [];
     swapSoundTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -305,6 +317,8 @@ export default function GameScreen(): React.ReactElement {
 
   const runStartShuffleAnimation = useCallback(() => {
     clearShuffleTimers();
+    const runId = shuffleRunIdRef.current + 1;
+    shuffleRunIdRef.current = runId;
     setIsShuffling(true);
     setRevealedHumanCount(0);
     setAnimatedCards([]);
@@ -330,6 +344,7 @@ export default function GameScreen(): React.ReactElement {
 
     for (let i = 0; i < SHUFFLE_PASS_COUNT; i++) {
       const spawnTimer = setTimeout(() => {
+        if (shuffleRunIdRef.current !== runId) return;
         try {
           if (soundEnabled && shuffleAudioStatus.isLoaded) {
             shuffleAudio.setPlaybackRate(
@@ -375,6 +390,7 @@ export default function GameScreen(): React.ReactElement {
         ]);
 
         const cleanupTimer = setTimeout(() => {
+          if (shuffleRunIdRef.current !== runId) return;
           setAnimatedCards((prev) =>
             prev.filter((ac) => ac.id !== leftId && ac.id !== rightId),
           );
@@ -389,6 +405,7 @@ export default function GameScreen(): React.ReactElement {
     for (let i = 0; i < 7; i++) {
       const revealTimer = setTimeout(
         () => {
+          if (shuffleRunIdRef.current !== runId) return;
           setRevealedHumanCount(i + 1);
         },
         revealStartDelay + i * HAND_REVEAL_STAGGER_MS,
@@ -398,6 +415,7 @@ export default function GameScreen(): React.ReactElement {
 
     const doneTimer = setTimeout(
       () => {
+        if (shuffleRunIdRef.current !== runId) return;
         setAnimatedCards([]);
         setIsShuffling(false);
         stopShuffleAudio();
@@ -488,13 +506,39 @@ export default function GameScreen(): React.ReactElement {
         if (prev.gameOver) return prev;
 
         const player = prev.players[pidx];
+        const currentOpponentHands = prev.players
+          .filter((_, idx) => idx !== pidx)
+          .map((p) => p.cards);
+
+        if (
+          aiShouldStop(player.cards, {
+            difficulty: aiDifficulty,
+            opponentHands: currentOpponentHands,
+          })
+        ) {
+          const currentScore = calcHandScore(player.cards);
+          return {
+            ...prev,
+            gameOver: true,
+            aiThinking: false,
+            message: `${player.name} stopped immediately with a winning hand (score ${currentScore})!`,
+          };
+        }
+
         const discardTop =
           prev.discard.length > 0
             ? prev.discard[prev.discard.length - 1]
             : null;
-        const decision = aiDecide(player.cards, discardTop);
-
         const newDeck = prev.deck.slice();
+        const deckPreview = [
+          newDeck[newDeck.length - 1],
+          newDeck[newDeck.length - 2],
+        ].filter((card): card is Card => Boolean(card));
+        const decision = aiDecide(player.cards, discardTop, {
+          difficulty: aiDifficulty,
+          deckPreview,
+        });
+
         const newDiscard = prev.discard.slice();
         const newPlayers = prev.players.map((p) => ({
           ...p,
@@ -527,7 +571,9 @@ export default function GameScreen(): React.ReactElement {
             };
           }
           const drawn = newDeck.pop() as Card;
-          const swapIdx = aiDecideSwap(newPlayers[pidx].cards, drawn);
+          const swapIdx = aiDecideSwap(newPlayers[pidx].cards, drawn, {
+            difficulty: aiDifficulty,
+          });
           if (swapIdx >= 0) {
             incomingCard = drawn;
             incomingSource = "deck";
@@ -615,7 +661,16 @@ export default function GameScreen(): React.ReactElement {
           }, CARD_MOVE_CLEANUP_MS);
         }
 
-        if (aiShouldStop(newPlayers[pidx].cards)) {
+        const nextOpponentHands = newPlayers
+          .filter((_, idx) => idx !== pidx)
+          .map((p) => p.cards);
+
+        if (
+          aiShouldStop(newPlayers[pidx].cards, {
+            difficulty: aiDifficulty,
+            opponentHands: nextOpponentHands,
+          })
+        ) {
           const newScore = calcHandScore(newPlayers[pidx].cards);
           return {
             ...prev,
@@ -722,7 +777,7 @@ export default function GameScreen(): React.ReactElement {
         return nextState;
       });
     },
-    [playSwapAudio],
+    [aiDifficulty, playSwapAudio],
   );
 
   const handleDrawDeck = useCallback(() => {
@@ -1389,7 +1444,7 @@ export default function GameScreen(): React.ReactElement {
           </View>
 
           <ActionBar
-            gameOver={gameOver && message !== "You stopped the game!"}
+            gameOver={gameOver && !/stopped/i.test(message)}
             onNewGame={handleNewGame}
           />
 

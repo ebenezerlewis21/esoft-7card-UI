@@ -8,6 +8,15 @@ import Text3D from "../components/Text3D";
 export default function UnderConstructionScreen(): React.ReactElement {
   const router = useRouter();
 
+  const handleGoBack = React.useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace("/login");
+  }, [router]);
+
   React.useEffect(() => {
     void ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.PORTRAIT_UP,
@@ -27,9 +36,9 @@ export default function UnderConstructionScreen(): React.ReactElement {
         <TouchableOpacity
           style={styles.button}
           activeOpacity={0.85}
-          onPress={() => router.replace("/lobby")}
+          onPress={handleGoBack}
         >
-          <Text3D style={styles.buttonText}>Back to Lobby</Text3D>
+          <Text3D style={styles.buttonText}>Go Back</Text3D>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

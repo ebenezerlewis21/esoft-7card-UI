@@ -25,10 +25,20 @@ const getPublicEnv = (name: string): string | undefined => {
 };
 
 export const Feature: {
+  authenticate: FeatureGate;
+  thirdPartyAuth: FeatureGate;
   skeleton: FeatureGate;
   lobbyScreen: FeatureGate;
   gameScreenAd: FeatureGate;
 } = {
+  authenticate: {
+    enabled: () =>
+      readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_AUTHENTICATE"), true),
+  },
+  thirdPartyAuth: {
+    enabled: () =>
+      readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_THIRD_PARTY_AUTH"), true),
+  },
   skeleton: {
     enabled: () =>
       readBooleanEnv(getPublicEnv("EXPO_PUBLIC_FEATURE_SKELETON"), true),

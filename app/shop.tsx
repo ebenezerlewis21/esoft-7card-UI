@@ -12,6 +12,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  getCurrentUserProfile,
+  spendCurrentUserCoins,
+} from "../constants/auth";
+import {
   BACKGROUNDS,
   type BackgroundDefinition,
   type BackgroundId,
@@ -26,21 +30,18 @@ import {
   getActiveCardBackId,
   getOwnedBackgroundIds,
   getOwnedCardBackIds,
-  getPlayerCoins,
   initializeProfileSettings,
   setActiveBackgroundId,
   setActiveCardBackId,
-  spendPlayerCoins,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
-  subscribePlayerCoins,
   unlockBackground,
   unlockCardBack,
 } from "../constants/settings";
 
 export default function ShopScreen(): React.ReactElement {
   const router = useRouter();
-  const [coins, setCoins] = React.useState(getPlayerCoins());
+  const [coins, setCoins] = React.useState(0);
   const [ownedIds, setOwnedIds] = React.useState(
     () => new Set<BackgroundId>(getOwnedBackgroundIds()),
   );
@@ -55,9 +56,15 @@ export default function ShopScreen(): React.ReactElement {
   );
 
   React.useEffect(() => {
-    const unsubscribeCoins = subscribePlayerCoins((nextCoins) => {
-      setCoins(nextCoins);
-    });
+    let cancelled = false;
+
+    const loadCurrentProfileCoins = async (): Promise<void> => {
+      const profile = await getCurrentUserProfile();
+      if (cancelled) return;
+      setCoins(profile?.coins ?? 0);
+    };
+
+    void loadCurrentProfileCoins();
 
     const unsubscribeBackgrounds = subscribeBackgroundSettings(() => {
       setOwnedIds(new Set<BackgroundId>(getOwnedBackgroundIds()));
@@ -76,17 +83,20 @@ export default function ShopScreen(): React.ReactElement {
     );
 
     return () => {
-      unsubscribeCoins();
+      cancelled = true;
       unsubscribeBackgrounds();
       unsubscribeCardBacks();
       void ScreenOrientation.unlockAsync();
     };
   }, []);
 
-  const buyBackground = (item: BackgroundDefinition): void => {
+  const buyBackground = async (item: BackgroundDefinition): Promise<void> => {
     if (ownedIds.has(item.id) || coins < item.cost) return;
 
-    if (!spendPlayerCoins(item.cost)) return;
+    const nextCoins = await spendCurrentUserCoins(item.cost);
+    if (nextCoins == null) return;
+
+    setCoins(nextCoins);
 
     unlockBackground(item.id as BackgroundId);
   };
@@ -95,10 +105,13 @@ export default function ShopScreen(): React.ReactElement {
     setActiveBackgroundId(backgroundId);
   };
 
-  const buyCardBack = (item: CardBackDefinition): void => {
+  const buyCardBack = async (item: CardBackDefinition): Promise<void> => {
     if (ownedCardBackIds.has(item.id) || coins < item.cost) return;
 
-    if (!spendPlayerCoins(item.cost)) return;
+    const nextCoins = await spendCurrentUserCoins(item.cost);
+    if (nextCoins == null) return;
+
+    setCoins(nextCoins);
 
     unlockCardBack(item.id);
   };
@@ -221,7 +234,7 @@ export default function ShopScreen(): React.ReactElement {
                         return;
                       }
 
-                      buyBackground(item);
+                      void buyBackground(item);
                     }}
                     disabled={!canInteract}
                     style={({ pressed }) => [
@@ -318,7 +331,7 @@ export default function ShopScreen(): React.ReactElement {
                         return;
                       }
 
-                      buyCardBack(item);
+                      void buyCardBack(item);
                     }}
                     disabled={!canInteract}
                     style={({ pressed }) => [
