@@ -14,6 +14,7 @@ import Text3D from "../components/Text3D";
 import {
   getCurrentUserProfile,
   spendCurrentUserCoins,
+  syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
 import {
   BACKGROUNDS,
@@ -62,6 +63,11 @@ export default function ShopScreen(): React.ReactElement {
       const profile = await getCurrentUserProfile();
       if (cancelled) return;
       setCoins(profile?.coins ?? 0);
+
+      const synced = await syncCurrentUserProfileFromBackend();
+      if (!cancelled && synced) {
+        setCoins(synced.coins);
+      }
     };
 
     void loadCurrentProfileCoins();

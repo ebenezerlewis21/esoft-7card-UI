@@ -5,6 +5,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
   Modal,
+  Platform,
   StyleSheet,
   Switch,
   TouchableOpacity,
@@ -12,7 +13,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
-import { clearCurrentUsername, getCurrentUserProfile } from "../constants/auth";
+import {
+  clearCurrentEmail,
+  clearCurrentName,
+  getCurrentUserProfile,
+  syncCurrentUserProfileFromBackend,
+} from "../constants/auth";
 import { BACKGROUNDS } from "../constants/backgrounds";
 import {
   getActiveBackgroundId,
@@ -68,12 +74,20 @@ export default function LobbyScreen(): React.ReactElement {
   );
 
   React.useEffect(() => {
+    if (Platform.OS === "web") {
+      return;
+    }
+
     void ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.PORTRAIT_UP,
-    );
+    ).catch(() => {
+      // Some devices do not support screen orientation lock at runtime.
+    });
 
     return () => {
-      void ScreenOrientation.unlockAsync();
+      void ScreenOrientation.unlockAsync().catch(() => {
+        // Keep teardown safe on devices that do not support orientation APIs.
+      });
     };
   }, []);
 
@@ -85,12 +99,24 @@ export default function LobbyScreen(): React.ReactElement {
       if (!profile || cancelled) return;
 
       setPlayerProfile({
-        name: profile.username,
+        name: profile.name,
         wins: profile.wins,
         gamesPlayed: profile.gamesPlayed,
         rank: profile.rank,
         coins: profile.coins,
       });
+
+      const syncedProfile = await syncCurrentUserProfileFromBackend();
+      if (!cancelled && syncedProfile) {
+        setPlayerProfile((prev) => ({
+          ...prev,
+          name: syncedProfile.name,
+          wins: syncedProfile.wins,
+          gamesPlayed: syncedProfile.gamesPlayed,
+          rank: syncedProfile.rank,
+          coins: syncedProfile.coins,
+        }));
+      }
     };
 
     void loadCurrentProfile();
@@ -128,7 +154,8 @@ export default function LobbyScreen(): React.ReactElement {
   const handleSignOut = React.useCallback(async () => {
     try {
       await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
-      await clearCurrentUsername();
+      await clearCurrentEmail();
+      await clearCurrentName();
     } catch {
       // Continue sign-out flow even if storage removal fails.
     }

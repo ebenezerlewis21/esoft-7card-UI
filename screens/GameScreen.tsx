@@ -24,6 +24,7 @@ import {
   type AiDifficulty,
   type TurnAlertMode,
 } from "@/constants/settings";
+import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import {
   aiDecide,
   aiDecideSwap,
@@ -208,6 +209,7 @@ export default function GameScreen(): React.ReactElement {
   const winnerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const gameRecordedForRoundRef = useRef<boolean>(false);
   const shuffleAudio = useAudioPlayer(SHUFFLE_SOUND_SOURCE, {
     downloadFirst: true,
     keepAudioSessionActive: true,
@@ -580,6 +582,7 @@ export default function GameScreen(): React.ReactElement {
 
   useEffect(() => {
     if (!state.gameOver) {
+      gameRecordedForRoundRef.current = false;
       clearWinnerRevealTimers();
       setShowWinnerReveal(false);
       setResultModalVisible(false);
@@ -609,6 +612,29 @@ export default function GameScreen(): React.ReactElement {
     openResultModal,
     state.gameOver,
   ]);
+
+  useEffect(() => {
+    if (!state.gameOver) {
+      return;
+    }
+
+    if (gameRecordedForRoundRef.current) {
+      return;
+    }
+
+    let winnerIdx = 0;
+    let bestScore = calcHandScore(state.players[0].cards);
+    for (let i = 1; i < state.players.length; i++) {
+      const score = calcHandScore(state.players[i].cards);
+      if (score < bestScore) {
+        bestScore = score;
+        winnerIdx = i;
+      }
+    }
+
+    gameRecordedForRoundRef.current = true;
+    void incrementCurrentUserGamesPlayedFromBackend(winnerIdx === 0);
+  }, [state.gameOver, state.players]);
 
   const endGame = useCallback((message: string) => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);

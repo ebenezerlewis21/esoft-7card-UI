@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -13,7 +15,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
-import { ensureUserProfile, setCurrentUsername } from "../constants/auth";
+import {
+  ensureUserProfile,
+  setCurrentEmail,
+  setCurrentName,
+} from "../constants/auth";
 import { Feature } from "../constants/feature";
 
 type AuthMode = "signin" | "signup";
@@ -43,14 +49,19 @@ const debugAuth = (
 
 export default function LoginScreen(): React.ReactElement {
   const router = useRouter();
-  const isDevEnvironment = process.env.EXPO_PUBLIC_APP_ENV === "local";
-  const isTestEnvironment = process.env.EXPO_PUBLIC_APP_ENV === "test";
+  const appEnv = process.env.EXPO_PUBLIC_APP_ENV ?? "";
+  const isTestEnvironment = appEnv === "test";
+  const isBackendAuthEnvironment =
+    appEnv === "local" || appEnv === "production";
+  const backendEnvLabel = appEnv === "production" ? "production" : "local";
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
-  const devLoginPath = process.env.EXPO_PUBLIC_DEV_LOGIN_PATH ?? "dev/login";
-  const devSignupPath = process.env.EXPO_PUBLIC_DEV_SIGNUP_PATH ?? "dev/signup";
+  const devLoginPath =
+    process.env.EXPO_PUBLIC_DEV_LOGIN_PATH ?? "api/auth/login";
+  const devSignupPath =
+    process.env.EXPO_PUBLIC_DEV_SIGNUP_PATH ?? "api/auth/signup";
 
   const [authMode, setAuthMode] = React.useState<AuthMode>("signin");
-  const [username, setUsername] = React.useState("");
+  const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -60,7 +71,12 @@ export default function LoginScreen(): React.ReactElement {
   const [rememberMe, setRememberMe] = React.useState(false);
   const [thirdPartyLoading, setThirdPartyLoading] =
     React.useState<ThirdPartyProvider | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const cardIntroY = React.useRef(new Animated.Value(22)).current;
+  const cardIntroOpacity = React.useRef(new Animated.Value(0)).current;
+  const glowDrift = React.useRef(new Animated.Value(0)).current;
 
   const destination = Feature.lobbyScreen.enabled() ? "/lobby" : "/game";
   const isThirdPartyAuthEnabled =
@@ -77,6 +93,8 @@ export default function LoginScreen(): React.ReactElement {
         if (!raw || cancelled) return;
 
         const parsed = JSON.parse(raw) as {
+          email?: string;
+          name?: string;
           username?: string;
           password?: string;
           rememberMe?: boolean;
@@ -84,10 +102,10 @@ export default function LoginScreen(): React.ReactElement {
 
         if (parsed.rememberMe) {
           setRememberMe(true);
-          setUsername(parsed.username ?? "");
+          setEmail(parsed.email ?? "");
           setPassword(parsed.password ?? "");
           debugAuth("loaded saved login", {
-            username: parsed.username ?? "",
+            email: parsed.email ?? "",
             rememberMe: true,
           });
         }
@@ -103,26 +121,74 @@ export default function LoginScreen(): React.ReactElement {
     };
   }, []);
 
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.spring(cardIntroY, {
+        toValue: 0,
+        friction: 8,
+        tension: 56,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardIntroOpacity, {
+        toValue: 1,
+        duration: 420,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowDrift, {
+          toValue: 1,
+          duration: 2600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowDrift, {
+          toValue: 0,
+          duration: 2600,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+    return () => loop.stop();
+  }, [cardIntroOpacity, cardIntroY, glowDrift]);
+
   const handleSubmit = React.useCallback(async () => {
-    const trimmedUsername = username.trim();
+    const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     debugAuth("submit started", {
       authMode,
-      username: trimmedUsername,
-      hasEmail: Boolean(trimmedEmail),
+      name: trimmedName,
+      email: trimmedEmail,
       env: process.env.EXPO_PUBLIC_APP_ENV ?? "unknown",
     });
 
-    if (!trimmedUsername) {
-      setErrorMessage("Enter a username to continue.");
-      debugAuth("validation failed: missing username");
+    if (!trimmedEmail) {
+      setErrorMessage("Enter an email to continue.");
+      debugAuth("validation failed: missing email");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setErrorMessage("Enter a valid email address.");
+      debugAuth("validation failed: invalid email", {
+        email: trimmedEmail,
+      });
+      return;
+    }
+
+    if (authMode === "signup" && !trimmedName) {
+      setErrorMessage("Enter a name to create account.");
+      debugAuth("validation failed: missing name");
       return;
     }
 
     if (!password) {
       setErrorMessage("Enter a password to continue.");
       debugAuth("validation failed: missing password", {
-        username: trimmedUsername,
+        name: trimmedName,
       });
       return;
     }
@@ -154,17 +220,22 @@ export default function LoginScreen(): React.ReactElement {
       }
     }
 
-    if (isDevEnvironment && authMode === "signin") {
+    if (isBackendAuthEnvironment && authMode === "signin") {
       if (!apiBaseUrl) {
-        setErrorMessage("API base URL is not configured for local login.");
+        setErrorMessage(
+          `API base URL is not configured for ${backendEnvLabel} login.`,
+        );
         return;
       }
 
       const loginUrl = `${apiBaseUrl.replace(/\/+$/, "")}/${devLoginPath.replace(/^\/+/, "")}`;
       debugAuth("calling dev login endpoint", {
         loginUrl,
-        username: trimmedUsername,
+        email: trimmedEmail,
+        mode: "json",
       });
+
+      let loginResponseName = trimmedName;
 
       try {
         const response = await fetch(loginUrl, {
@@ -173,54 +244,108 @@ export default function LoginScreen(): React.ReactElement {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: trimmedUsername,
+            email: trimmedEmail,
             password,
           }),
         });
 
-        if (!response.ok) {
+        const acceptedByStatus = response.ok || response.status === 302;
+
+        if (!acceptedByStatus) {
           debugAuth("dev login rejected", {
             status: response.status,
-            username: trimmedUsername,
+            email: trimmedEmail,
           });
-          setErrorMessage("Invalid login credentials.");
+          if (response.status === 401) {
+            setErrorMessage("Incorrect email or password.");
+          } else if (response.status === 400) {
+            setErrorMessage("Invalid login request. Check your email and password.");
+          } else if (response.status === 403) {
+            setErrorMessage("Login blocked by server security. Please try again.");
+          } else if (response.status >= 500) {
+            setErrorMessage("Server error during sign-in. Please try again.");
+          } else {
+            setErrorMessage("Unable to sign in right now.");
+          }
           return;
         }
 
         debugAuth("dev login accepted", {
           status: response.status,
-          username: trimmedUsername,
+          email: trimmedEmail,
         });
 
         try {
-          const payload = (await response.json()) as { success?: boolean };
+          const payload = (await response.json()) as {
+            success?: boolean;
+            name?: string;
+          };
           if (payload.success === false) {
-            setErrorMessage("Invalid login credentials.");
+            setErrorMessage("Incorrect email or password.");
             return;
           }
+
+          if (typeof payload.name === "string" && payload.name.trim()) {
+            loginResponseName = payload.name.trim();
+          }
         } catch {
-          // If backend does not return JSON, rely on HTTP status.
+          // If backend does not return JSON (for example, HTML login flow), rely on HTTP status.
         }
+
+        const resolvedName =
+          authMode === "signup"
+            ? trimmedName
+            : loginResponseName || trimmedEmail.split("@")[0] || trimmedEmail;
+
+        try {
+          if (rememberMe) {
+            await AsyncStorage.setItem(
+              SAVED_LOGIN_KEY,
+              JSON.stringify({
+                email: trimmedEmail,
+                password,
+                rememberMe: true,
+              }),
+            );
+          } else {
+            await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
+          }
+
+          await ensureUserProfile(resolvedName);
+          await setCurrentEmail(trimmedEmail);
+          await setCurrentName(resolvedName);
+        } catch {
+          // Ignore storage write errors and continue auth flow.
+        }
+
+        debugAuth("navigating after login", {
+          name: resolvedName,
+          destination,
+        });
+        router.replace(destination);
+        return;
       } catch {
         debugAuth("dev login request failed", {
           loginUrl,
-          username: trimmedUsername,
+          email: trimmedEmail,
         });
-        setErrorMessage("Unable to reach local login server.");
+        setErrorMessage(`Unable to reach ${backendEnvLabel} login server.`);
         return;
       }
     }
 
-    if (isDevEnvironment && authMode === "signup") {
+    if (isBackendAuthEnvironment && authMode === "signup") {
       if (!apiBaseUrl) {
-        setErrorMessage("API base URL is not configured for local signup.");
+        setErrorMessage(
+          `API base URL is not configured for ${backendEnvLabel} signup.`,
+        );
         return;
       }
 
       const signupUrl = `${apiBaseUrl.replace(/\/+$/, "")}/${devSignupPath.replace(/^\/+/, "")}`;
       debugAuth("calling dev signup endpoint", {
         signupUrl,
-        username: trimmedUsername,
+        name: trimmedName,
         email: trimmedEmail,
       });
 
@@ -231,7 +356,7 @@ export default function LoginScreen(): React.ReactElement {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: trimmedUsername,
+            name: trimmedName,
             email: trimmedEmail,
             password,
           }),
@@ -240,21 +365,31 @@ export default function LoginScreen(): React.ReactElement {
         if (!response.ok) {
           debugAuth("dev signup rejected", {
             status: response.status,
-            username: trimmedUsername,
+            name: trimmedName,
           });
-          setErrorMessage("Unable to create account.");
+          if (response.status === 409) {
+            setErrorMessage("This email is already registered.");
+          } else if (response.status === 400) {
+            setErrorMessage("Invalid sign-up details. Check name, email, and password.");
+          } else if (response.status === 403) {
+            setErrorMessage("Sign-up blocked by server security. Please try again.");
+          } else if (response.status >= 500) {
+            setErrorMessage("Server error during sign-up. Please try again.");
+          } else {
+            setErrorMessage("Unable to create account right now.");
+          }
           return;
         }
 
         debugAuth("dev signup accepted", {
           status: response.status,
-          username: trimmedUsername,
+          name: trimmedName,
         });
 
         try {
           const payload = (await response.json()) as { success?: boolean };
           if (payload.success === false) {
-            setErrorMessage("Unable to create account.");
+            setErrorMessage("Unable to create account right now.");
             return;
           }
         } catch {
@@ -263,9 +398,9 @@ export default function LoginScreen(): React.ReactElement {
       } catch {
         debugAuth("dev signup request failed", {
           signupUrl,
-          username: trimmedUsername,
+          name: trimmedName,
         });
-        setErrorMessage("Unable to reach local signup server.");
+        setErrorMessage(`Unable to reach ${backendEnvLabel} signup server.`);
         return;
       }
     }
@@ -291,9 +426,9 @@ export default function LoginScreen(): React.ReactElement {
     if (
       isTestEnvironment &&
       authMode === "signin" &&
-      testAccounts[trimmedUsername] !== password
+      testAccounts[trimmedEmail] !== password
     ) {
-      debugAuth("test login rejected", { username: trimmedUsername });
+      debugAuth("test login rejected", { email: trimmedEmail });
       setErrorMessage(
         "Invalid login for test environment. Please sign up first.",
       );
@@ -301,15 +436,15 @@ export default function LoginScreen(): React.ReactElement {
     }
 
     if (isTestEnvironment && authMode === "signup") {
-      if (testAccounts[trimmedUsername]) {
-        setErrorMessage("Username already exists in test environment.");
+      if (testAccounts[trimmedEmail]) {
+        setErrorMessage("Email already exists in test environment.");
         return;
       }
 
       try {
         const nextAccounts = {
           ...testAccounts,
-          [trimmedUsername]: password,
+          [trimmedEmail]: password,
         };
         await AsyncStorage.setItem(
           TEST_ACCOUNTS_KEY,
@@ -325,7 +460,7 @@ export default function LoginScreen(): React.ReactElement {
 
     setErrorMessage(null);
     debugAuth("login accepted, persisting user", {
-      username: trimmedUsername,
+      name: trimmedName,
       rememberMe,
     });
 
@@ -334,7 +469,7 @@ export default function LoginScreen(): React.ReactElement {
         await AsyncStorage.setItem(
           SAVED_LOGIN_KEY,
           JSON.stringify({
-            username: trimmedUsername,
+            email: trimmedEmail,
             password,
             rememberMe: true,
           }),
@@ -343,10 +478,11 @@ export default function LoginScreen(): React.ReactElement {
         await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
       }
 
-      await ensureUserProfile(trimmedUsername);
+      await ensureUserProfile(trimmedName);
 
       if (!isSignup) {
-        await setCurrentUsername(trimmedUsername);
+        await setCurrentEmail(trimmedEmail);
+        await setCurrentName(trimmedName);
       }
     } catch {
       // Ignore storage write errors and continue auth flow.
@@ -354,7 +490,7 @@ export default function LoginScreen(): React.ReactElement {
 
     if (isSignup) {
       debugAuth("signup completed, returning to sign-in", {
-        username: trimmedUsername,
+        name: trimmedName,
       });
       setAuthMode("signin");
       setEmail("");
@@ -365,7 +501,7 @@ export default function LoginScreen(): React.ReactElement {
     }
 
     debugAuth("navigating after login", {
-      username: trimmedUsername,
+      name: trimmedName,
       destination,
     });
     router.replace(destination);
@@ -377,12 +513,13 @@ export default function LoginScreen(): React.ReactElement {
     devSignupPath,
     destination,
     email,
-    isDevEnvironment,
+    isBackendAuthEnvironment,
     isTestEnvironment,
+    backendEnvLabel,
+    name,
     password,
     rememberMe,
     router,
-    username,
   ]);
 
   const handleContinueAsGuest = React.useCallback(() => {
@@ -390,6 +527,19 @@ export default function LoginScreen(): React.ReactElement {
     setErrorMessage(null);
     router.replace(destination);
   }, [destination, router]);
+
+  const handleSubmitPress = React.useCallback(async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await handleSubmit();
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [handleSubmit, isSubmitting]);
 
   const handleForgotPassword = React.useCallback(() => {
     setErrorMessage(null);
@@ -431,15 +581,63 @@ export default function LoginScreen(): React.ReactElement {
     [isThirdPartyAuthEnabled],
   );
 
-  const isBusy = thirdPartyLoading != null;
+  const isBusy = thirdPartyLoading != null || isSubmitting;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <View pointerEvents="none" style={styles.backgroundLayer}>
+        <Animated.View
+          style={[
+            styles.glowOrbLarge,
+            {
+              transform: [
+                {
+                  translateY: glowDrift.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -18],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.glowOrbSmall,
+            {
+              transform: [
+                {
+                  translateY: glowDrift.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 14],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.wrapper}
       >
-        <View style={styles.brandBlock}>
+        <Animated.View
+          style={[
+            styles.brandBlock,
+            {
+              opacity: cardIntroOpacity,
+              transform: [
+                {
+                  translateY: cardIntroY.interpolate({
+                    inputRange: [0, 22],
+                    outputRange: [0, 12],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <Text3D style={styles.kicker} animate={false}>
             {authMode === "signup" ? "Create Profile" : "Welcome Back"}
           </Text3D>
@@ -449,9 +647,17 @@ export default function LoginScreen(): React.ReactElement {
               ? "Create your account to save stats and start your climb."
               : "Sign in to track progress and jump into your next hand."}
           </Text3D>
-        </View>
+        </Animated.View>
 
-        <View style={styles.card}>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              opacity: cardIntroOpacity,
+              transform: [{ translateY: cardIntroY }],
+            },
+          ]}
+        >
           <View style={styles.modeSwitch}>
             <Pressable
               style={[
@@ -486,15 +692,16 @@ export default function LoginScreen(): React.ReactElement {
 
           <View style={styles.fieldGroup}>
             <Text3D style={styles.fieldLabel} animate={false}>
-              Username
+              Email
             </Text3D>
             <TextInput
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Enter your username"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
               placeholderTextColor="#8f8f9d"
               autoCapitalize="none"
               autoCorrect={false}
+              keyboardType="email-address"
               style={styles.input}
             />
           </View>
@@ -502,16 +709,15 @@ export default function LoginScreen(): React.ReactElement {
           {authMode === "signup" ? (
             <View style={styles.fieldGroup}>
               <Text3D style={styles.fieldLabel} animate={false}>
-                Email
+                Name
               </Text3D>
               <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
+                value={name}
+                onChangeText={setName}
+                placeholder="Enter your name"
                 placeholderTextColor="#8f8f9d"
                 autoCapitalize="none"
                 autoCorrect={false}
-                keyboardType="email-address"
                 style={styles.input}
               />
             </View>
@@ -633,12 +839,18 @@ export default function LoginScreen(): React.ReactElement {
           <Pressable
             style={styles.primaryButton}
             onPress={() => {
-              void handleSubmit();
+              void handleSubmitPress();
             }}
+            disabled={isBusy}
           >
-            <Text3D style={styles.primaryButtonText} animate={false}>
-              {submitLabel}
-            </Text3D>
+            <View style={styles.primaryButtonContent}>
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : null}
+              <Text3D style={styles.primaryButtonText} animate={false}>
+                {isSubmitting ? "Please wait..." : submitLabel}
+              </Text3D>
+            </View>
           </Pressable>
 
           {isThirdPartyAuthEnabled ? (
@@ -726,7 +938,7 @@ export default function LoginScreen(): React.ReactElement {
               Continue as Guest
             </Text3D>
           </Pressable>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -735,7 +947,29 @@ export default function LoginScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#12161f",
+    backgroundColor: "#0d1320",
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
+  },
+  glowOrbLarge: {
+    position: "absolute",
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    right: -110,
+    top: -70,
+    backgroundColor: "rgba(64, 120, 255, 0.22)",
+  },
+  glowOrbSmall: {
+    position: "absolute",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    left: -100,
+    bottom: 120,
+    backgroundColor: "rgba(52, 221, 206, 0.14)",
   },
   wrapper: {
     flex: 1,
@@ -747,6 +981,7 @@ const styles = StyleSheet.create({
   },
   brandBlock: {
     gap: 10,
+    paddingHorizontal: 4,
   },
   kicker: {
     color: "#79d0ff",
@@ -768,12 +1003,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   card: {
-    backgroundColor: "#1a2130",
+    backgroundColor: "#171f2f",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#2b3952",
+    borderColor: "#35527a",
     padding: 20,
     gap: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.34,
+    shadowRadius: 18,
+    elevation: 9,
   },
   modeSwitch: {
     flexDirection: "row",
@@ -811,8 +1051,8 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#334462",
-    backgroundColor: "#0f1420",
+    borderColor: "#3d5e8d",
+    backgroundColor: "#101a2a",
     color: "#f3f6ff",
     paddingHorizontal: 14,
     fontSize: 15,
@@ -822,9 +1062,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#334462",
+    borderColor: "#3d5e8d",
     borderRadius: 12,
-    backgroundColor: "#0f1420",
+    backgroundColor: "#101a2a",
     height: 48,
     paddingRight: 6,
   },
@@ -876,6 +1116,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#4a8dff",
     alignItems: "center",
     justifyContent: "center",
+  },
+  primaryButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   primaryButtonText: {
     color: "#ffffff",
