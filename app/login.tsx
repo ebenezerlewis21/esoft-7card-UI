@@ -259,9 +259,13 @@ export default function LoginScreen(): React.ReactElement {
           if (response.status === 401) {
             setErrorMessage("Incorrect email or password.");
           } else if (response.status === 400) {
-            setErrorMessage("Invalid login request. Check your email and password.");
+            setErrorMessage(
+              "Invalid login request. Check your email and password.",
+            );
           } else if (response.status === 403) {
-            setErrorMessage("Login blocked by server security. Please try again.");
+            setErrorMessage(
+              "Login blocked by server security. Please try again.",
+            );
           } else if (response.status >= 500) {
             setErrorMessage("Server error during sign-in. Please try again.");
           } else {
@@ -370,9 +374,13 @@ export default function LoginScreen(): React.ReactElement {
           if (response.status === 409) {
             setErrorMessage("This email is already registered.");
           } else if (response.status === 400) {
-            setErrorMessage("Invalid sign-up details. Check name, email, and password.");
+            setErrorMessage(
+              "Invalid sign-up details. Check name, email, and password.",
+            );
           } else if (response.status === 403) {
-            setErrorMessage("Sign-up blocked by server security. Please try again.");
+            setErrorMessage(
+              "Sign-up blocked by server security. Please try again.",
+            );
           } else if (response.status >= 500) {
             setErrorMessage("Server error during sign-up. Please try again.");
           } else {

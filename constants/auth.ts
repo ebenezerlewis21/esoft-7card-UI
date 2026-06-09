@@ -189,33 +189,38 @@ const resolveApiUrl = (path: string): string | null => {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 };
 
-export const syncCurrentUserGamesPlayedFromBackend = async (): Promise<number | null> => {
+export const syncCurrentUserGamesPlayedFromBackend = async (): Promise<
+  number | null
+> => {
   const profile = await syncCurrentUserProfileFromBackend();
   return profile?.gamesPlayed ?? null;
 };
 
-export const syncCurrentUserProfileFromBackend = async (): Promise<UserProfile | null> => {
-  const apiUrl = resolveApiUrl("api/users/stats");
-  const email = await getCurrentEmail();
-  if (!apiUrl || !email) return null;
+export const syncCurrentUserProfileFromBackend =
+  async (): Promise<UserProfile | null> => {
+    const apiUrl = resolveApiUrl("api/users/stats");
+    const email = await getCurrentEmail();
+    if (!apiUrl || !email) return null;
 
-  try {
-    const response = await fetch(`${apiUrl}?email=${encodeURIComponent(email)}`);
-    if (!response.ok) return null;
+    try {
+      const response = await fetch(
+        `${apiUrl}?email=${encodeURIComponent(email)}`,
+      );
+      if (!response.ok) return null;
 
-    const payload = (await response.json()) as {
-      name?: string;
-      rank?: string;
-      gamesPlayed?: number;
-      gamesWon?: number;
-      balance?: number;
-    };
+      const payload = (await response.json()) as {
+        name?: string;
+        rank?: string;
+        gamesPlayed?: number;
+        gamesWon?: number;
+        balance?: number;
+      };
 
-    return await writeCurrentUserProfileFromBackend(payload);
-  } catch {
-    return null;
-  }
-};
+      return await writeCurrentUserProfileFromBackend(payload);
+    } catch {
+      return null;
+    }
+  };
 
 export const incrementCurrentUserGamesPlayedFromBackend = async (
   won = false,

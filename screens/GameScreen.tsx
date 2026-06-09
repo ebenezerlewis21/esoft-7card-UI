@@ -5,6 +5,7 @@ import CenterZone from "@/components/CenterZone";
 import PlayerHand from "@/components/PlayerHand";
 import ResultModal from "@/components/ResultModal";
 import Text3D from "@/components/Text3D";
+import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
 import { Feature } from "@/constants/feature";
@@ -24,7 +25,6 @@ import {
   type AiDifficulty,
   type TurnAlertMode,
 } from "@/constants/settings";
-import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import {
   aiDecide,
   aiDecideSwap,
