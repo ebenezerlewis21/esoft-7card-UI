@@ -6,7 +6,6 @@ import ResultModal from "@/components/ResultModal";
 import Text3D from "@/components/Text3D";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
-import { Feature } from "@/constants/feature";
 import {
   getActiveBackgroundId,
   getActiveCardBackId,
@@ -54,9 +53,6 @@ const gameInteractor = new GameInteractor();
 
 export default function GameScreen(): React.ReactElement {
   const router = useRouter();
-  const skeletonEnabled = Feature.skeleton.enabled();
-  const lobbyEnabled = Feature.lobbyScreen.enabled();
-  const gameScreenAdEnabled = Feature.gameScreenAd.enabled();
   const [activeBackgroundId, setActiveBackgroundId] = useState(
     getActiveBackgroundId(),
   );
@@ -444,7 +440,6 @@ export default function GameScreen(): React.ReactElement {
   }, [clearShuffleTimers, runStartShuffleAnimation]);
 
   useEffect(() => {
-    if (!skeletonEnabled) return;
     if (!state.gameOver) {
       roundScoredRef.current = false;
       return;
@@ -471,10 +466,10 @@ export default function GameScreen(): React.ReactElement {
       }
       return next;
     });
-  }, [MATCH_WINS_TO_WIN, skeletonEnabled, state.gameOver, state.players]);
+  }, [MATCH_WINS_TO_WIN, state.gameOver, state.players]);
 
   useEffect(() => {
-    if (!gameScreenAdEnabled || !state.gameOver) {
+    if (!state.gameOver) {
       setShowGameScreenAd(false);
       return;
     }
@@ -487,7 +482,7 @@ export default function GameScreen(): React.ReactElement {
     return () => {
       clearTimeout(adTimer);
     };
-  }, [gameScreenAdEnabled, state.gameOver]);
+  }, [state.gameOver]);
 
   const endGame = useCallback((message: string) => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
@@ -1228,16 +1223,11 @@ export default function GameScreen(): React.ReactElement {
 
   const handleNewGame = useCallback(() => {
     setShowGameScreenAd(false);
-    if (!skeletonEnabled) {
-      roundScoredRef.current = false;
-      resetRound();
-      return;
-    }
     setMatchWins([0, 0, 0]);
     setMatchWinnerIdx(null);
     roundScoredRef.current = false;
     resetRound();
-  }, [resetRound, skeletonEnabled]);
+  }, [resetRound]);
 
   const handleResultAction = useCallback(() => {
     setShowGameScreenAd(false);
@@ -1266,15 +1256,12 @@ export default function GameScreen(): React.ReactElement {
     discard,
     stopPending = false,
   } = state;
-  const hasMatchPoint =
-    skeletonEnabled && matchWins.some((count) => count === 2);
+  const hasMatchPoint = matchWins.some((count) => count === 2);
   const hasHumanFullyRevealed = revealedHumanCount >= players[0].cards.length;
-  const showHumanScore = skeletonEnabled
-    ? gameOver || (!isShuffling && hasHumanFullyRevealed)
-    : true;
+  const showHumanScore = gameOver || (!isShuffling && hasHumanFullyRevealed);
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
-  const showTopTurnBanner = skeletonEnabled && isShuffling;
+  const showTopTurnBanner = isShuffling;
 
   useEffect(() => {
     if (isMyTurn && !wasMyTurnRef.current && turnAlertMode === "vibrate") {
@@ -1372,8 +1359,8 @@ export default function GameScreen(): React.ReactElement {
               <PlayerHand
                 player={players[1]}
                 cardBackColor={sharedCardBackColor}
-                wins={skeletonEnabled ? matchWins[1] : undefined}
-                matchPointActive={skeletonEnabled ? hasMatchPoint : undefined}
+                wins={matchWins[1]}
+                matchPointActive={hasMatchPoint}
                 isCurrentTurn={turn === 1 && !gameOver}
                 showCards={gameOver}
                 showScore={gameOver}
@@ -1430,8 +1417,8 @@ export default function GameScreen(): React.ReactElement {
               <PlayerHand
                 player={players[2]}
                 cardBackColor={sharedCardBackColor}
-                wins={skeletonEnabled ? matchWins[2] : undefined}
-                matchPointActive={skeletonEnabled ? hasMatchPoint : undefined}
+                wins={matchWins[2]}
+                matchPointActive={hasMatchPoint}
                 isCurrentTurn={turn === 2 && !gameOver}
                 showCards={gameOver}
                 showScore={gameOver}
@@ -1460,8 +1447,8 @@ export default function GameScreen(): React.ReactElement {
             <PlayerHand
               player={players[0]}
               cardBackColor={sharedCardBackColor}
-              wins={skeletonEnabled ? matchWins[0] : undefined}
-              matchPointActive={skeletonEnabled ? hasMatchPoint : undefined}
+              wins={matchWins[0]}
+              matchPointActive={hasMatchPoint}
               isHuman
               isCurrentTurn={isMyTurn}
               showCards
@@ -1538,15 +1525,15 @@ export default function GameScreen(): React.ReactElement {
         visible={gameOver}
         players={players}
         stopMessage={message}
-        matchWins={skeletonEnabled ? matchWins : undefined}
-        winsToWin={skeletonEnabled ? MATCH_WINS_TO_WIN : undefined}
-        matchWinnerIdx={skeletonEnabled ? matchWinnerIdx : undefined}
-        onNewGame={skeletonEnabled ? handleResultAction : handleNewGame}
-        onBackToLobby={lobbyEnabled ? handleBackToLobby : undefined}
+        matchWins={matchWins}
+        winsToWin={MATCH_WINS_TO_WIN}
+        matchWinnerIdx={matchWinnerIdx}
+        onNewGame={handleResultAction}
+        onBackToLobby={handleBackToLobby}
       />
 
       <Modal
-        visible={gameScreenAdEnabled && showGameScreenAd}
+        visible={showGameScreenAd}
         transparent
         animationType="fade"
         presentationStyle="overFullScreen"

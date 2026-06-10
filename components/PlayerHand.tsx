@@ -9,7 +9,6 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { Feature } from "../constants/feature";
 import Card from "./Card";
 import Text3D from "./Text3D";
 
@@ -61,7 +60,6 @@ export default function PlayerHand({
   containerStyle,
   cardBackColor = "#1a3a8f",
 }: PlayerHandProps): React.ReactElement {
-  const skeletonEnabled = Feature.skeleton.enabled();
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStateRef = useRef<{
     idx: number | null;
@@ -86,7 +84,7 @@ export default function PlayerHand({
     isHuman && phase === "action" && !gameOver && isCurrentTurn;
   const cardSize: "normal" | "small" = compact ? "small" : "normal";
   const stackedCardOverlap = compact ? -22 : -28;
-  const isMatchPointDanger = skeletonEnabled && matchPointActive && wins === 0;
+  const isMatchPointDanger = matchPointActive && wins === 0;
   const lastTapRef = useRef<{ idx: number | null; time: number }>({
     idx: null,
     time: 0,
@@ -215,8 +213,7 @@ export default function PlayerHand({
     <View
       style={[
         styles.container,
-        isCurrentTurn &&
-          (skeletonEnabled ? styles.activeBorder : styles.activeBorderLegacy),
+        isCurrentTurn && styles.activeBorder,
         containerStyle,
       ]}
     >
@@ -225,12 +222,14 @@ export default function PlayerHand({
           <View
             style={[
               styles.humanInfo,
-              skeletonEnabled && styles.humanInfoShifted,
+              styles.humanInfoShifted,
             ]}
           >
             <View style={[styles.nameRow, styles.humanNameRow]}>
               <View style={styles.humanIconBadge}>
-                <Text3D style={styles.humanIconText}>{player.icon ?? "🧑"}</Text3D>
+                <Text3D style={styles.humanIconText}>
+                  {player.icon ?? "🧑"}
+                </Text3D>
               </View>
               {isCurrentTurn && !gameOver && <View style={styles.turnDot} />}
               <Text3D
@@ -241,25 +240,23 @@ export default function PlayerHand({
               >
                 {player.name}
               </Text3D>
-              {skeletonEnabled && (
-                <View
+              <View
+                style={[
+                  styles.winsPill,
+                  wins === 2 && styles.winsPillHot,
+                  isMatchPointDanger && styles.winsPillDanger,
+                ]}
+              >
+                <Text3D
                   style={[
-                    styles.winsPill,
-                    wins === 2 && styles.winsPillHot,
-                    isMatchPointDanger && styles.winsPillDanger,
+                    styles.winsText,
+                    wins === 2 && styles.winsTextHot,
+                    isMatchPointDanger && styles.winsTextDanger,
                   ]}
                 >
-                  <Text3D
-                    style={[
-                      styles.winsText,
-                      wins === 2 && styles.winsTextHot,
-                      isMatchPointDanger && styles.winsTextDanger,
-                    ]}
-                  >
-                    W {wins}
-                  </Text3D>
-                </View>
-              )}
+                  W {wins}
+                </Text3D>
+              </View>
               {isCurrentTurn && !gameOver && !isHuman && (
                 <Text3D style={styles.thinking}> thinking…</Text3D>
               )}
@@ -398,29 +395,29 @@ export default function PlayerHand({
           >
             <View style={styles.nameRow}>
               <View style={styles.botIconBadge}>
-                <Text3D style={styles.botIconText}>{player.icon ?? "🤖"}</Text3D>
+                <Text3D style={styles.botIconText}>
+                  {player.icon ?? "🤖"}
+                </Text3D>
               </View>
               {isCurrentTurn && !gameOver && <View style={styles.turnDot} />}
               <Text3D style={styles.name}>{player.name}</Text3D>
-              {skeletonEnabled && (
-                <View
+              <View
+                style={[
+                  styles.winsPill,
+                  wins === 2 && styles.winsPillHot,
+                  isMatchPointDanger && styles.winsPillDanger,
+                ]}
+              >
+                <Text3D
                   style={[
-                    styles.winsPill,
-                    wins === 2 && styles.winsPillHot,
-                    isMatchPointDanger && styles.winsPillDanger,
+                    styles.winsText,
+                    wins === 2 && styles.winsTextHot,
+                    isMatchPointDanger && styles.winsTextDanger,
                   ]}
                 >
-                  <Text3D
-                    style={[
-                      styles.winsText,
-                      wins === 2 && styles.winsTextHot,
-                      isMatchPointDanger && styles.winsTextDanger,
-                    ]}
-                  >
-                    W {wins}
-                  </Text3D>
-                </View>
-              )}
+                  W {wins}
+                </Text3D>
+              </View>
               {isCurrentTurn && !gameOver && !isHuman && (
                 <Text3D style={styles.thinking}> thinking…</Text3D>
               )}

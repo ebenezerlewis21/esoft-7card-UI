@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  clearAuthCredential,
   clearCurrentEmail,
   clearCurrentName,
   getCurrentUserProfile,
@@ -48,6 +49,8 @@ export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [playModeOpen, setPlayModeOpen] = React.useState(false);
+  const [guestPromptOpen, setGuestPromptOpen] = React.useState(false);
+  const [isGuest, setIsGuest] = React.useState(true);
   const [playerProfile, setPlayerProfile] = React.useState(DEFAULT_PROFILE);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
   const [turnAlertMode, setTurnAlertModeState] =
@@ -91,7 +94,14 @@ export default function LobbyScreen(): React.ReactElement {
 
     const loadCurrentProfile = async (): Promise<void> => {
       const profile = await getCurrentUserProfile();
-      if (!profile || cancelled) return;
+      if (!profile || cancelled) {
+        if (!cancelled) {
+          setIsGuest(true);
+        }
+        return;
+      }
+
+      setIsGuest(false);
 
       setPlayerProfile({
         name: profile.name,
@@ -103,6 +113,7 @@ export default function LobbyScreen(): React.ReactElement {
 
       const syncedProfile = await syncCurrentUserProfileFromBackend();
       if (!cancelled && syncedProfile) {
+        setIsGuest(false);
         setPlayerProfile((prev) => ({
           ...prev,
           name: syncedProfile.name,
@@ -137,6 +148,7 @@ export default function LobbyScreen(): React.ReactElement {
   const handleSignOut = React.useCallback(async () => {
     try {
       await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
+      await clearAuthCredential();
       await clearCurrentEmail();
       await clearCurrentName();
     } catch {
@@ -147,14 +159,29 @@ export default function LobbyScreen(): React.ReactElement {
     router.replace("/login");
   }, [router]);
 
+  const handleRestrictedGuestAction = React.useCallback(() => {
+    setGuestPromptOpen(true);
+  }, []);
+
+  const handleGuestPromptClose = React.useCallback(() => {
+    setGuestPromptOpen(false);
+    router.replace("/login");
+  }, [router]);
+
   return (
     <SafeAreaView style={styles.container}>
       <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
         <View style={styles.topBar}>
           <TouchableOpacity
-            style={styles.storeButton}
+            style={[styles.storeButton, isGuest && styles.disabledStoreButton]}
             activeOpacity={0.85}
-            onPress={() => router.push("./shop")}
+            onPress={() => {
+              if (isGuest) {
+                handleRestrictedGuestAction();
+                return;
+              }
+              router.push("./shop");
+            }}
             accessibilityRole="button"
             accessibilityLabel="Store"
           >
@@ -272,9 +299,16 @@ export default function LobbyScreen(): React.ReactElement {
               styles.diamondButton,
               styles.friendButton,
               styles.actionBottom,
+              isGuest && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
-            onPress={() => router.push("/under-construction")}
+            onPress={() => {
+              if (isGuest) {
+                handleRestrictedGuestAction();
+                return;
+              }
+              router.push("/under-construction");
+            }}
           >
             <View style={styles.diamondButtonContent}>
               <Text3D
@@ -290,9 +324,16 @@ export default function LobbyScreen(): React.ReactElement {
               styles.diamondButton,
               styles.tournamentButton,
               styles.actionLeft,
+              isGuest && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
-            onPress={() => router.push("/under-construction")}
+            onPress={() => {
+              if (isGuest) {
+                handleRestrictedGuestAction();
+                return;
+              }
+              router.push("/under-construction");
+            }}
           >
             <View style={styles.diamondButtonContent}>
               <Text3D
@@ -444,6 +485,31 @@ export default function LobbyScreen(): React.ReactElement {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={guestPromptOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleGuestPromptClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text3D style={styles.modalTitle}>Sign In Required</Text3D>
+
+            <Text3D style={styles.settingsHint}>
+              This feature is available for signed-in players only.
+            </Text3D>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              activeOpacity={0.85}
+              onPress={handleGuestPromptClose}
+            >
+              <Text3D style={styles.modalCloseText}>Go to Sign In</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -484,6 +550,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  disabledStoreButton: {
+    opacity: 0.42,
   },
   settingsButton: {
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -610,6 +679,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 5,
+  },
+  disabledDiamondButton: {
+    opacity: 0.42,
   },
   diamondButtonContent: {
     transform: [{ rotate: "-45deg" }],

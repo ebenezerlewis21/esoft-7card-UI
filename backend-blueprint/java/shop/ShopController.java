@@ -1,7 +1,10 @@
 package com.example.game.shop;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/shop")
@@ -18,20 +21,35 @@ public class ShopController {
   }
 
   @GetMapping("/inventory")
-  public List<UserShopItem> inventory(@RequestParam Long userId) {
+  public List<UserShopItem> inventory(HttpServletRequest request) {
+    Long userId = requireUserId(request);
     return shopService.getInventory(userId);
   }
 
   @PostMapping("/purchase")
-  public ShopService.PurchaseResult purchase(@RequestBody PurchaseRequest request) {
-    return shopService.purchaseItem(request.userId(), request.sku());
+  public ShopService.PurchaseResult purchase(
+      @RequestBody PurchaseRequest request,
+      HttpServletRequest httpRequest
+  ) {
+    Long userId = requireUserId(httpRequest);
+    return shopService.purchaseItem(userId, request.sku());
   }
 
   @PostMapping("/equip")
-  public void equip(@RequestBody EquipRequest request) {
-    shopService.equipItem(request.userId(), request.sku());
+  public void equip(@RequestBody EquipRequest request, HttpServletRequest httpRequest) {
+    Long userId = requireUserId(httpRequest);
+    shopService.equipItem(userId, request.sku());
   }
 
-  public record PurchaseRequest(Long userId, String sku) {}
-  public record EquipRequest(Long userId, String sku) {}
+  private Long requireUserId(HttpServletRequest request) {
+    Object rawUserId = request.getAttribute(AuthInterceptor.AUTH_USER_ID_ATTR);
+    if (rawUserId instanceof Long userId) {
+      return userId;
+    }
+
+    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid auth session");
+  }
+
+  public record PurchaseRequest(String sku) {}
+  public record EquipRequest(String sku) {}
 }

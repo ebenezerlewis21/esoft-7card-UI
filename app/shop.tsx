@@ -3,40 +3,40 @@ import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
-  Animated,
-  Easing,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    Animated,
+    Easing,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
-  equipCurrentUserShopItemFromBackend,
-  getCurrentUserShopInventoryFromBackend,
-  getCurrentUserProfile,
-  getShopCatalogFromBackend,
-  purchaseCurrentUserShopItemFromBackend,
-  syncCurrentUserProfileFromBackend,
-  type ShopCatalogItem,
-  type ShopItemType,
+    equipCurrentUserShopItemFromBackend,
+    getCurrentUserProfile,
+    getCurrentUserShopInventoryFromBackend,
+    getShopCatalogFromBackend,
+    purchaseCurrentUserShopItemFromBackend,
+    syncCurrentUserProfileFromBackend,
+    type ShopCatalogItem,
+    type ShopItemType,
 } from "../constants/auth";
 import { type BackgroundId } from "../constants/backgrounds";
 import { type CardBackId } from "../constants/cardbacks";
 import { type PlayerIconId } from "../constants/playerIcons";
 import {
-  getActivePlayerIconId,
-  getOwnedPlayerIconIds,
-  initializeProfileSettings,
-  setActiveBackgroundId,
-  setActiveCardBackId,
-  setActivePlayerIconId,
-  subscribePlayerIconSettings,
-  unlockBackground,
-  unlockCardBack,
-  unlockPlayerIcon,
+    getActivePlayerIconId,
+    getOwnedPlayerIconIds,
+    initializeProfileSettings,
+    setActiveBackgroundId,
+    setActiveCardBackId,
+    setActivePlayerIconId,
+    subscribePlayerIconSettings,
+    unlockBackground,
+    unlockCardBack,
+    unlockPlayerIcon,
 } from "../constants/settings";
 
 const BACKGROUND_ID_SET = new Set<BackgroundId>([
@@ -221,7 +221,8 @@ const toRenderableItem = (item: ShopCatalogItem): ShopRenderableItem => {
       getPropertyString(item.properties, "background") ??
       getPropertyString(item.properties, "color") ??
       defaultPreview,
-    badgeLabel: getPropertyString(item.properties, "badgeLabel") ?? defaultBadge,
+    badgeLabel:
+      getPropertyString(item.properties, "badgeLabel") ?? defaultBadge,
     iconName:
       (getPropertyString(item.properties, "icon") as IconName | null) ??
       defaultIcon,
@@ -233,7 +234,9 @@ export default function ShopScreen(): React.ReactElement {
   const [coins, setCoins] = React.useState(0);
   const [catalogItems, setCatalogItems] = React.useState<ShopCatalogItem[]>([]);
   const [ownedSkus, setOwnedSkus] = React.useState<Set<string>>(new Set());
-  const [equippedByType, setEquippedByType] = React.useState<EquippedByType>({});
+  const [equippedByType, setEquippedByType] = React.useState<EquippedByType>(
+    {},
+  );
   const [ownedPlayerIconIds, setOwnedPlayerIconIds] = React.useState(
     () => new Set<PlayerIconId>(getOwnedPlayerIconIds()),
   );
@@ -242,15 +245,24 @@ export default function ShopScreen(): React.ReactElement {
   );
 
   const backgroundItems = React.useMemo(
-    () => catalogItems.filter((item) => item.type === "BACKGROUND").map(toRenderableItem),
+    () =>
+      catalogItems
+        .filter((item) => item.type === "BACKGROUND")
+        .map(toRenderableItem),
     [catalogItems],
   );
   const cardBackItems = React.useMemo(
-    () => catalogItems.filter((item) => item.type === "CARD_BACK").map(toRenderableItem),
+    () =>
+      catalogItems
+        .filter((item) => item.type === "CARD_BACK")
+        .map(toRenderableItem),
     [catalogItems],
   );
   const playerIconItems = React.useMemo(
-    () => catalogItems.filter((item) => item.type === "PLAYER_ICON").map(toRenderableItem),
+    () =>
+      catalogItems
+        .filter((item) => item.type === "PLAYER_ICON")
+        .map(toRenderableItem),
     [catalogItems],
   );
 
@@ -260,6 +272,12 @@ export default function ShopScreen(): React.ReactElement {
     const loadCurrentProfileCoins = async (): Promise<void> => {
       const profile = await getCurrentUserProfile();
       if (cancelled) return;
+
+      if (!profile) {
+        router.replace("/lobby");
+        return;
+      }
+
       setCoins(profile?.coins ?? 0);
 
       const synced = await syncCurrentUserProfileFromBackend();
@@ -342,7 +360,7 @@ export default function ShopScreen(): React.ReactElement {
       unsubscribePlayerIcons();
       void ScreenOrientation.unlockAsync();
     };
-  }, []);
+  }, [router]);
 
   const buyItem = async (item: ShopRenderableItem): Promise<void> => {
     if (ownedSkus.has(item.base.sku)) return;
@@ -350,7 +368,9 @@ export default function ShopScreen(): React.ReactElement {
     const amount = Math.max(0, Math.floor(item.base.price));
     if (coins < amount) return;
 
-    const nextCoins = await purchaseCurrentUserShopItemFromBackend(item.base.sku);
+    const nextCoins = await purchaseCurrentUserShopItemFromBackend(
+      item.base.sku,
+    );
     if (nextCoins == null) return;
 
     setCoins(nextCoins);
@@ -453,7 +473,9 @@ export default function ShopScreen(): React.ReactElement {
         >
           {backgroundItems.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text3D style={styles.emptyText}>No gameboards from server.</Text3D>
+              <Text3D style={styles.emptyText}>
+                No gameboards from server.
+              </Text3D>
             </View>
           ) : null}
           {backgroundItems.map((item) => {
@@ -467,7 +489,10 @@ export default function ShopScreen(): React.ReactElement {
             return (
               <View key={item.base.sku} style={styles.card}>
                 <View
-                  style={[styles.preview, { backgroundColor: item.previewColor }]}
+                  style={[
+                    styles.preview,
+                    { backgroundColor: item.previewColor },
+                  ]}
                 >
                   <View style={styles.previewGlow} />
                   <View style={styles.previewBadge}>
@@ -558,7 +583,9 @@ export default function ShopScreen(): React.ReactElement {
         >
           {cardBackItems.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text3D style={styles.emptyText}>No card backs from server.</Text3D>
+              <Text3D style={styles.emptyText}>
+                No card backs from server.
+              </Text3D>
             </View>
           ) : null}
           {cardBackItems.map((item) => {
@@ -571,7 +598,12 @@ export default function ShopScreen(): React.ReactElement {
 
             return (
               <View key={item.base.sku} style={styles.card}>
-                <View style={[styles.preview, { backgroundColor: item.previewColor }]}>
+                <View
+                  style={[
+                    styles.preview,
+                    { backgroundColor: item.previewColor },
+                  ]}
+                >
                   <View style={styles.previewGlow} />
                   <View style={styles.previewBadge}>
                     <MaterialCommunityIcons
@@ -661,7 +693,9 @@ export default function ShopScreen(): React.ReactElement {
         >
           {playerIconItems.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text3D style={styles.emptyText}>No player icons from server.</Text3D>
+              <Text3D style={styles.emptyText}>
+                No player icons from server.
+              </Text3D>
             </View>
           ) : null}
           {playerIconItems.map((item) => {
@@ -677,12 +711,18 @@ export default function ShopScreen(): React.ReactElement {
             const canBuy = coins >= itemCost && !owned;
             const canEquip = owned && !active;
             const canInteract = canBuy || canEquip;
-            const emoji = getPropertyString(item.base.properties, "emoji") ?? "🙂";
+            const emoji =
+              getPropertyString(item.base.properties, "emoji") ?? "🙂";
             const animation = toIconAnimation(item.base.properties);
 
             return (
               <View key={item.base.sku} style={styles.card}>
-                <View style={[styles.preview, { backgroundColor: item.previewColor }]}>
+                <View
+                  style={[
+                    styles.preview,
+                    { backgroundColor: item.previewColor },
+                  ]}
+                >
                   <View style={styles.previewGlow} />
                   <View style={styles.previewBadge}>
                     <MaterialCommunityIcons

@@ -1,6 +1,5 @@
 import React from "react";
 import { Modal, StyleSheet, TouchableOpacity, View } from "react-native";
-import { Feature } from "../constants/feature";
 import {
   calcHandScore,
   type Player,
@@ -28,8 +27,6 @@ export default function ResultModal({
   onNewGame,
   onBackToLobby,
 }: ResultModalProps): React.ReactElement | null {
-  const skeletonEnabled = Feature.skeleton.enabled();
-  const lobbyEnabled = Feature.lobbyScreen.enabled();
   if (!players || !visible) return null;
 
   const scores = players
@@ -39,7 +36,7 @@ export default function ResultModal({
   const winner = scores[0];
   const safeWins = matchWins ?? [0, 0, 0];
   const targetWins = winsToWin ?? 3;
-  const isMatchOver = skeletonEnabled && matchWinnerIdx !== null;
+  const isMatchOver = matchWinnerIdx !== null;
   const matchLeader =
     matchWinnerIdx !== null && matchWinnerIdx !== undefined
       ? (players[matchWinnerIdx]?.name ?? winner.name)
@@ -78,13 +75,11 @@ export default function ResultModal({
                     {s.score} pts
                   </Text3D>
                 </View>
-                {skeletonEnabled && (
-                  <View style={styles.winsBadge}>
-                    <Text3D style={styles.winsVal}>
-                      {safeWins[s.idx] ?? 0}/{targetWins} W
-                    </Text3D>
-                  </View>
-                )}
+                <View style={styles.winsBadge}>
+                  <Text3D style={styles.winsVal}>
+                    {safeWins[s.idx] ?? 0}/{targetWins} W
+                  </Text3D>
+                </View>
               </View>
             </View>
           ))}
@@ -103,15 +98,11 @@ export default function ResultModal({
             style={styles.newGameBtn}
           >
             <Text3D style={styles.newGameText}>
-              {isMatchOver
-                ? "Start New Match"
-                : skeletonEnabled
-                  ? "Next Round"
-                  : "Play Again"}
+              {isMatchOver ? "Start New Match" : "Next Round"}
             </Text3D>
           </TouchableOpacity>
 
-          {lobbyEnabled && isMatchOver && onBackToLobby && (
+          {isMatchOver && onBackToLobby && (
             <TouchableOpacity
               onPress={onBackToLobby}
               activeOpacity={0.85}

@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    BACKGROUNDS,
-    DEFAULT_BACKGROUND_ID,
-    type BackgroundId,
+  BACKGROUNDS,
+  DEFAULT_BACKGROUND_ID,
+  type BackgroundId,
 } from "./backgrounds";
 import { CARD_BACKS, DEFAULT_CARD_BACK_ID, type CardBackId } from "./cardbacks";
 import {
@@ -209,11 +209,12 @@ function persistOwnedPlayerIconIds(): void {
 }
 
 function persistActivePlayerIconId(): void {
-  void AsyncStorage.setItem(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId).catch(
-    () => {
-      writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
-    },
-  );
+  void AsyncStorage.setItem(
+    ACTIVE_PLAYER_ICON_ID_KEY,
+    activePlayerIconId,
+  ).catch(() => {
+    writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
+  });
 }
 
 export function unlockBackground(backgroundId: BackgroundId): boolean {
@@ -359,11 +360,12 @@ export function setActivePlayerIconId(playerIconId: PlayerIconId): void {
   activePlayerIconId = playerIconId;
   playerIconListeners.forEach((listener) => listener());
 
-  void AsyncStorage.setItem(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId).catch(
-    () => {
-      writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
-    },
-  );
+  void AsyncStorage.setItem(
+    ACTIVE_PLAYER_ICON_ID_KEY,
+    activePlayerIconId,
+  ).catch(() => {
+    writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
+  });
 }
 
 export function unlockPlayerIcon(playerIconId: PlayerIconId): boolean {
@@ -532,8 +534,12 @@ async function loadProfileSettings(): Promise<void> {
     storedActive = await AsyncStorage.getItem(ACTIVE_BACKGROUND_ID_KEY);
     storedOwnedCardBacks = await AsyncStorage.getItem(OWNED_CARD_BACK_IDS_KEY);
     storedActiveCardBack = await AsyncStorage.getItem(ACTIVE_CARD_BACK_ID_KEY);
-    storedOwnedPlayerIcons = await AsyncStorage.getItem(OWNED_PLAYER_ICON_IDS_KEY);
-    storedActivePlayerIcon = await AsyncStorage.getItem(ACTIVE_PLAYER_ICON_ID_KEY);
+    storedOwnedPlayerIcons = await AsyncStorage.getItem(
+      OWNED_PLAYER_ICON_IDS_KEY,
+    );
+    storedActivePlayerIcon = await AsyncStorage.getItem(
+      ACTIVE_PLAYER_ICON_ID_KEY,
+    );
   } catch {
     storedCoins = readStorageValue(PLAYER_COINS_KEY);
     storedOwned = readStorageValue(OWNED_BACKGROUND_IDS_KEY);
@@ -598,7 +604,10 @@ async function loadProfileSettings(): Promise<void> {
           )
           .filter((value): value is PlayerIconId => value !== null);
 
-        ownedPlayerIconIds = normalizeOwnedIds(nextOwned, DEFAULT_PLAYER_ICON_ID);
+        ownedPlayerIconIds = normalizeOwnedIds(
+          nextOwned,
+          DEFAULT_PLAYER_ICON_ID,
+        );
       }
     } catch {
       // Keep defaults if parsing fails.
@@ -628,7 +637,9 @@ async function loadProfileSettings(): Promise<void> {
     activeBackgroundId = firstOwned ?? DEFAULT_BACKGROUND_ID;
   }
 
-  const normalizedActivePlayerIcon = normalizePlayerIconId(storedActivePlayerIcon);
+  const normalizedActivePlayerIcon = normalizePlayerIconId(
+    storedActivePlayerIcon,
+  );
   if (
     normalizedActivePlayerIcon &&
     ownedPlayerIconIds.has(normalizedActivePlayerIcon)

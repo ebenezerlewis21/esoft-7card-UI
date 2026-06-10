@@ -16,11 +16,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  clearAuthCredential,
+  clearCurrentEmail,
+  clearCurrentName,
   ensureUserProfile,
+  setAuthCredential,
   setCurrentEmail,
   setCurrentName,
 } from "../constants/auth";
-import { Feature } from "../constants/feature";
 
 type AuthMode = "signin" | "signup";
 type ThirdPartyProvider = "google" | "apple" | "facebook";
@@ -78,9 +81,8 @@ export default function LoginScreen(): React.ReactElement {
   const cardIntroOpacity = React.useRef(new Animated.Value(0)).current;
   const glowDrift = React.useRef(new Animated.Value(0)).current;
 
-  const destination = Feature.lobbyScreen.enabled() ? "/lobby" : "/game";
-  const isThirdPartyAuthEnabled =
-    Feature.authenticate.enabled() && Feature.thirdPartyAuth.enabled();
+  const destination = "/lobby";
+  const isThirdPartyAuthEnabled = true;
 
   const submitLabel = authMode === "signup" ? "Create Account" : "Sign In";
 
@@ -238,6 +240,8 @@ export default function LoginScreen(): React.ReactElement {
       let loginResponseName = trimmedName;
 
       try {
+        await clearAuthCredential();
+
         const response = await fetch(loginUrl, {
           method: "POST",
           headers: {
@@ -283,23 +287,51 @@ export default function LoginScreen(): React.ReactElement {
           const payload = (await response.json()) as {
             success?: boolean;
             name?: string;
+            token?: string;
+            accessToken?: string;
+            sessionToken?: string;
+            credentialType?: "Bearer";
+            expiresAt?: string;
+            refreshToken?: string;
+            refreshTokenExpiresAt?: string;
           };
           if (payload.success === false) {
             setErrorMessage("Incorrect email or password.");
             return;
           }
 
+          const token =
+            payload.token?.trim() ??
+            payload.accessToken?.trim() ??
+            payload.sessionToken?.trim() ??
+            "";
+
+          if (__DEV__) {
+            console.log("[login] auth token from response", token || null);
+          }
+
+          if (token) {
+            await setAuthCredential({
+              token,
+              type: "Bearer",
+              expiresAt: payload.expiresAt ?? null,
+              refreshToken: payload.refreshToken ?? null,
+              refreshTokenExpiresAt: payload.refreshTokenExpiresAt ?? null,
+            });
+          } else {
+            debugAuth("login succeeded without auth token in response body");
+          }
+
           if (typeof payload.name === "string" && payload.name.trim()) {
             loginResponseName = payload.name.trim();
           }
         } catch {
-          // If backend does not return JSON (for example, HTML login flow), rely on HTTP status.
+          // Backend returned non-JSON (e.g. cookie-based or redirect flow) — rely on HTTP status.
+          debugAuth("login response was not JSON, proceeding on HTTP status");
         }
 
         const resolvedName =
-          authMode === "signup"
-            ? trimmedName
-            : loginResponseName || trimmedEmail.split("@")[0] || trimmedEmail;
+          loginResponseName || trimmedEmail.split("@")[0] || trimmedEmail;
 
         try {
           if (rememberMe) {
@@ -473,6 +505,8 @@ export default function LoginScreen(): React.ReactElement {
     });
 
     try {
+      await clearAuthCredential();
+
       if (rememberMe) {
         await AsyncStorage.setItem(
           SAVED_LOGIN_KEY,
@@ -530,9 +564,18 @@ export default function LoginScreen(): React.ReactElement {
     router,
   ]);
 
-  const handleContinueAsGuest = React.useCallback(() => {
+  const handleContinueAsGuest = React.useCallback(async () => {
     debugAuth("continue as guest", { destination });
     setErrorMessage(null);
+
+    try {
+      await clearAuthCredential();
+      await clearCurrentEmail();
+      await clearCurrentName();
+    } catch {
+      // Continue guest flow even if local cleanup fails.
+    }
+
     router.replace(destination);
   }, [destination, router]);
 

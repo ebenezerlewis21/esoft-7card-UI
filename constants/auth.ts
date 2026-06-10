@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 export type UserProfile = {
   name: string;
@@ -6,6 +8,14 @@ export type UserProfile = {
   gamesPlayed: number;
   rank: string;
   coins: number;
+};
+
+export type AuthCredential = {
+  token: string;
+  type?: "Bearer";
+  expiresAt?: string | null;
+  refreshToken?: string | null;
+  refreshTokenExpiresAt?: string | null;
 };
 
 export type ShopItemType = "BACKGROUND" | "CARD_BACK" | "PLAYER_ICON";
@@ -32,6 +42,7 @@ type UserProfileMap = Record<string, UserProfile>;
 
 const CURRENT_USER_KEY = "@auth/currentUser";
 const CURRENT_EMAIL_KEY = "@auth/currentEmail";
+const CURRENT_AUTH_CREDENTIAL_KEY = "@auth/currentAuthCredential";
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
 const TEST_PROFILE_NAME = "test";
@@ -148,6 +159,57 @@ export const clearCurrentEmail = async (): Promise<void> => {
   await AsyncStorage.removeItem(CURRENT_EMAIL_KEY);
 };
 
+export const setAuthCredential = async (
+  credential: AuthCredential,
+): Promise<void> => {
+  const normalizedToken = credential.token.trim();
+  if (!normalizedToken) {
+    await AsyncStorage.removeItem(CURRENT_AUTH_CREDENTIAL_KEY);
+    return;
+  }
+
+  await AsyncStorage.setItem(
+    CURRENT_AUTH_CREDENTIAL_KEY,
+    JSON.stringify({
+      token: normalizedToken,
+      type: "Bearer",
+      expiresAt: credential.expiresAt ?? null,
+      refreshToken: credential.refreshToken ?? null,
+      refreshTokenExpiresAt: credential.refreshTokenExpiresAt ?? null,
+    }),
+  );
+};
+
+export const clearAuthCredential = async (): Promise<void> => {
+  await AsyncStorage.removeItem(CURRENT_AUTH_CREDENTIAL_KEY);
+};
+
+export const getAuthCredential = async (): Promise<AuthCredential | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(CURRENT_AUTH_CREDENTIAL_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<AuthCredential> | null;
+    const token = parsed?.token?.trim() ?? "";
+    if (!token) return null;
+
+    return {
+      token,
+      type: "Bearer",
+      expiresAt:
+        typeof parsed?.expiresAt === "string" ? parsed.expiresAt : null,
+      refreshToken:
+        typeof parsed?.refreshToken === "string" ? parsed.refreshToken : null,
+      refreshTokenExpiresAt:
+        typeof parsed?.refreshTokenExpiresAt === "string"
+          ? parsed.refreshTokenExpiresAt
+          : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const getCurrentEmail = async (): Promise<string | null> => {
   const email = await AsyncStorage.getItem(CURRENT_EMAIL_KEY);
   const trimmedEmail = email?.trim().toLowerCase() ?? "";
@@ -219,9 +281,192 @@ const writeCurrentUserProfileFromBackend = async (payload: {
 };
 
 const resolveApiUrl = (path: string): string | null => {
-  const base = process.env.EXPO_PUBLIC_API_URL ?? "";
-  if (!base.trim()) return null;
+  const configuredBase = process.env.EXPO_PUBLIC_API_URL?.trim() ?? "";
+  if (!configuredBase) return null;
+
+  const mobileOverride = process.env.EXPO_PUBLIC_API_URL_DEVICE?.trim() ?? "";
+  const base =
+    Platform.OS !== "web" && mobileOverride
+      ? mobileOverride
+      : rewriteLocalhostForDevice(configuredBase);
+
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+};
+
+const rewriteLocalhostForDevice = (baseUrl: string): string => {
+  if (Platform.OS === "web") {
+    return baseUrl;
+  }
+
+  if (!/(localhost|127\.0\.0\.1|\[::1\])/i.test(baseUrl)) {
+    return baseUrl;
+  }
+
+  const host = getExpoHostIp();
+  if (!host) {
+    return baseUrl;
+  }
+
+  return baseUrl.replace(/localhost|127\.0\.0\.1|\[::1\]/gi, host);
+};
+
+const getExpoHostIp = (): string | null => {
+  const constantsLike = Constants as unknown as {
+    expoConfig?: { hostUri?: string };
+    expoGoConfig?: { debuggerHost?: string };
+    manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
+  };
+
+  const rawHostUri =
+    constantsLike.expoConfig?.hostUri ??
+    constantsLike.expoGoConfig?.debuggerHost ??
+    constantsLike.manifest2?.extra?.expoClient?.hostUri ??
+    "";
+
+  if (!rawHostUri) {
+    return null;
+  }
+
+  const hostCandidate = rawHostUri.split(":")[0]?.trim();
+  if (!hostCandidate) {
+    return null;
+  }
+
+  return hostCandidate;
+};
+
+const normalizeHeaders = (
+  headers: HeadersInit | undefined,
+): Record<string, string> => {
+  if (!headers) return {};
+  if (Array.isArray(headers)) {
+    return headers.reduce<Record<string, string>>((acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    }, {});
+  }
+
+  if (headers instanceof Headers) {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
+  }
+
+  return {
+    ...headers,
+  };
+};
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+const refreshAccessTokenFromBackend = async (): Promise<boolean> => {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  refreshInFlight = (async () => {
+    const refreshUrl = resolveApiUrl("api/auth/refresh");
+    const credential = await getAuthCredential();
+    const refreshToken = credential?.refreshToken?.trim() ?? "";
+    if (!refreshUrl || !refreshToken) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          refreshToken,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          await clearAuthCredential();
+        }
+        return false;
+      }
+
+      const payload = (await response.json()) as {
+        token?: string;
+        accessToken?: string;
+        credentialType?: "Bearer";
+        expiresAt?: string;
+        refreshToken?: string;
+        refreshTokenExpiresAt?: string;
+      };
+
+      const nextToken = payload.token?.trim() ?? payload.accessToken?.trim() ?? "";
+      if (!nextToken) {
+        return false;
+      }
+
+      await setAuthCredential({
+        token: nextToken,
+        type: "Bearer",
+        expiresAt: payload.expiresAt ?? null,
+        refreshToken: payload.refreshToken ?? credential?.refreshToken ?? null,
+        refreshTokenExpiresAt:
+          payload.refreshTokenExpiresAt ??
+          credential?.refreshTokenExpiresAt ??
+          null,
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+};
+
+const fetchWithAuth = async (
+  url: string,
+  init?: RequestInit,
+): Promise<Response> => {
+  const credential = await getAuthCredential();
+  const headers = normalizeHeaders(init?.headers);
+
+  if (credential?.token) {
+    headers.Authorization = `Bearer ${credential.token}`;
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+  });
+
+  if (response.status !== 401 || !credential?.token) {
+    return response;
+  }
+
+  const refreshed = await refreshAccessTokenFromBackend();
+  if (!refreshed) {
+    return response;
+  }
+
+  const nextCredential = await getAuthCredential();
+  if (!nextCredential?.token) {
+    return response;
+  }
+
+  const retryHeaders = normalizeHeaders(init?.headers);
+  retryHeaders.Authorization = `Bearer ${nextCredential.token}`;
+
+  return fetch(url, {
+    ...init,
+    headers: retryHeaders,
+  });
 };
 
 export const syncCurrentUserGamesPlayedFromBackend = async (): Promise<
@@ -238,7 +483,7 @@ export const syncCurrentUserProfileFromBackend =
     if (!apiUrl || !email) return null;
 
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `${apiUrl}?email=${encodeURIComponent(email)}`,
       );
       if (!response.ok) return null;
@@ -255,7 +500,7 @@ export const syncCurrentUserProfileFromBackend =
     } catch {
       return null;
     }
-};
+  };
 
 export const incrementCurrentUserGamesPlayedFromBackend = async (
   won = false,
@@ -278,7 +523,7 @@ export const incrementCurrentUserGamesPlayedFromBackend = async (
       console.log("[stats] record game start", { apiUrl, email, won });
     }
 
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithAuth(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -356,7 +601,7 @@ export const spendCurrentUserCoins = async (
   const email = await getCurrentEmail();
   if (apiUrl && email) {
     try {
-      const response = await fetch(apiUrl, {
+      const response = await fetchWithAuth(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -430,7 +675,7 @@ export const getShopCatalogFromBackend = async (): Promise<
   if (!apiUrl) return null;
 
   try {
-    const response = await fetch(apiUrl);
+    const response = await fetchWithAuth(apiUrl);
     if (!response.ok) return null;
 
     const payload = (await response.json()) as ShopCatalogItem[];
@@ -448,7 +693,7 @@ export const getCurrentUserShopInventoryFromBackend = async (): Promise<
   if (!apiUrl || !email) return null;
 
   try {
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${apiUrl}?email=${encodeURIComponent(email)}`,
     );
     if (!response.ok) return null;
@@ -469,7 +714,7 @@ export const purchaseCurrentUserShopItemFromBackend = async (
   if (!apiUrl || !email || !normalizedSku) return null;
 
   try {
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithAuth(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -505,7 +750,7 @@ export const equipCurrentUserShopItemFromBackend = async (
   if (!apiUrl || !email || !normalizedSku) return false;
 
   try {
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithAuth(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
