@@ -2,6 +2,7 @@ import { Slot, usePathname, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Animated, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import LaunchIntro from "../components/LaunchIntro";
 import { isAuthenticatedSession } from "../constants/auth";
 
 const PUBLIC_PATHS = new Set(["/", "/login"]);
@@ -11,6 +12,7 @@ export default function RootLayout(): React.ReactElement {
   const pathname = usePathname();
   const [authCheckPending, setAuthCheckPending] = React.useState(true);
   const [showOverlay, setShowOverlay] = React.useState(false);
+  const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
   const hasMounted = React.useRef(false);
 
@@ -86,6 +88,9 @@ export default function RootLayout(): React.ReactElement {
           <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
             <ActivityIndicator size="large" color="#ffffff" />
           </Animated.View>
+        ) : null}
+        {showLaunchIntro ? (
+          <LaunchIntro onFinish={() => setShowLaunchIntro(false)} />
         ) : null}
       </View>
     </SafeAreaProvider>

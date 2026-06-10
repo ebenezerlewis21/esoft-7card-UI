@@ -1127,7 +1127,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 40,
     paddingBottom: 28,
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
+    gap: 22,
     backgroundColor: "#12161f",
   },
   brandBlock: {
