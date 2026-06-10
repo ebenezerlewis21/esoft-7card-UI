@@ -401,7 +401,8 @@ const refreshAccessTokenFromBackend = async (): Promise<boolean> => {
         refreshTokenExpiresAt?: string;
       };
 
-      const nextToken = payload.token?.trim() ?? payload.accessToken?.trim() ?? "";
+      const nextToken =
+        payload.token?.trim() ?? payload.accessToken?.trim() ?? "";
       if (!nextToken) {
         return false;
       }

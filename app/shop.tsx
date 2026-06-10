@@ -3,40 +3,40 @@ import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
-    Animated,
-    Easing,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
-    equipCurrentUserShopItemFromBackend,
-    getCurrentUserProfile,
-    getCurrentUserShopInventoryFromBackend,
-    getShopCatalogFromBackend,
-    purchaseCurrentUserShopItemFromBackend,
-    syncCurrentUserProfileFromBackend,
-    type ShopCatalogItem,
-    type ShopItemType,
+  equipCurrentUserShopItemFromBackend,
+  getCurrentUserProfile,
+  getCurrentUserShopInventoryFromBackend,
+  getShopCatalogFromBackend,
+  purchaseCurrentUserShopItemFromBackend,
+  syncCurrentUserProfileFromBackend,
+  type ShopCatalogItem,
+  type ShopItemType,
 } from "../constants/auth";
 import { type BackgroundId } from "../constants/backgrounds";
 import { type CardBackId } from "../constants/cardbacks";
 import { type PlayerIconId } from "../constants/playerIcons";
 import {
-    getActivePlayerIconId,
-    getOwnedPlayerIconIds,
-    initializeProfileSettings,
-    setActiveBackgroundId,
-    setActiveCardBackId,
-    setActivePlayerIconId,
-    subscribePlayerIconSettings,
-    unlockBackground,
-    unlockCardBack,
-    unlockPlayerIcon,
+  getActivePlayerIconId,
+  getOwnedPlayerIconIds,
+  initializeProfileSettings,
+  setActiveBackgroundId,
+  setActiveCardBackId,
+  setActivePlayerIconId,
+  subscribePlayerIconSettings,
+  unlockBackground,
+  unlockCardBack,
+  unlockPlayerIcon,
 } from "../constants/settings";
 
 const BACKGROUND_ID_SET = new Set<BackgroundId>([

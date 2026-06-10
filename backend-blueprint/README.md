@@ -40,7 +40,9 @@ How to integrate in your backend
 5. Return auth credential from login and require it in each protected request.
 6. Resolve userId from auth session in controllers instead of request body/query.
 7. Add dependency for password hashing if not already present:
-  - org.springframework.security:spring-security-crypto
+
+- org.springframework.security:spring-security-crypto
+
 8. Provide AUTH_JWT_SECRET via secure config (secrets manager / vault / protected env var).
 
 JWT auth request contract

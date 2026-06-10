@@ -37,6 +37,7 @@ type PlayerHandProps = {
   compact?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   cardBackColor?: string;
+  showThinking?: boolean;
 };
 
 export default function PlayerHand({
@@ -59,6 +60,7 @@ export default function PlayerHand({
   compact = false,
   containerStyle,
   cardBackColor = "#1a3a8f",
+  showThinking = true,
 }: PlayerHandProps): React.ReactElement {
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStateRef = useRef<{
@@ -219,12 +221,7 @@ export default function PlayerHand({
     >
       {isHuman ? (
         <View style={styles.humanRow}>
-          <View
-            style={[
-              styles.humanInfo,
-              styles.humanInfoShifted,
-            ]}
-          >
+          <View style={[styles.humanInfo, styles.humanInfoShifted]}>
             <View style={[styles.nameRow, styles.humanNameRow]}>
               <View style={styles.humanIconBadge}>
                 <Text3D style={styles.humanIconText}>
@@ -257,7 +254,7 @@ export default function PlayerHand({
                   W {wins}
                 </Text3D>
               </View>
-              {isCurrentTurn && !gameOver && !isHuman && (
+              {showThinking && isCurrentTurn && !gameOver && !isHuman && (
                 <Text3D style={styles.thinking}> thinking…</Text3D>
               )}
             </View>
@@ -418,7 +415,7 @@ export default function PlayerHand({
                   W {wins}
                 </Text3D>
               </View>
-              {isCurrentTurn && !gameOver && !isHuman && (
+              {showThinking && isCurrentTurn && !gameOver && !isHuman && (
                 <Text3D style={styles.thinking}> thinking…</Text3D>
               )}
             </View>

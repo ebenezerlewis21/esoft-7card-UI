@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   StyleSheet,
@@ -20,6 +21,15 @@ import {
   getCurrentUserProfile,
   syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
+import {
+  getQuickMatch,
+  getQuickMatchIdentity,
+  joinQuickMatch,
+  leaveQuickMatch,
+  startQuickMatchGame,
+  type QuickMatchIdentity,
+  type QuickMatchSession,
+} from "../constants/multiplayer";
 import {
   getAiDifficulty,
   getTurnAlertMode,
@@ -50,6 +60,17 @@ export default function LobbyScreen(): React.ReactElement {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [playModeOpen, setPlayModeOpen] = React.useState(false);
   const [guestPromptOpen, setGuestPromptOpen] = React.useState(false);
+  const [quickMatchOpen, setQuickMatchOpen] = React.useState(false);
+  const [quickMatchLoading, setQuickMatchLoading] = React.useState(false);
+  const [quickMatchError, setQuickMatchError] = React.useState<string | null>(
+    null,
+  );
+  const [quickMatchSession, setQuickMatchSession] =
+    React.useState<QuickMatchSession | null>(null);
+  const [quickMatchIdentity, setQuickMatchIdentity] =
+    React.useState<QuickMatchIdentity | null>(null);
+  const [latestQuickMatchPlayerId, setLatestQuickMatchPlayerId] =
+    React.useState<string | null>(null);
   const [isGuest, setIsGuest] = React.useState(true);
   const [playerProfile, setPlayerProfile] = React.useState(DEFAULT_PROFILE);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
@@ -163,10 +184,168 @@ export default function LobbyScreen(): React.ReactElement {
     setGuestPromptOpen(true);
   }, []);
 
-  const handleGuestPromptClose = React.useCallback(() => {
+  const handleGuestPromptDismiss = React.useCallback(() => {
+    setGuestPromptOpen(false);
+  }, []);
+
+  const updateQuickMatchSession = React.useCallback(
+    (nextSession: QuickMatchSession) => {
+      setQuickMatchSession((previousSession) => {
+        if (
+          previousSession &&
+          nextSession.players.length > previousSession.players.length
+        ) {
+          const previousPlayerIds = new Set(
+            previousSession.players.map((player) => player.playerId),
+          );
+          const joinedPlayer = nextSession.players.find(
+            (player) => !previousPlayerIds.has(player.playerId),
+          );
+          setLatestQuickMatchPlayerId(joinedPlayer?.playerId ?? null);
+        } else if (!previousSession && nextSession.players.length > 0) {
+          const newestPlayer =
+            nextSession.players[nextSession.players.length - 1];
+          setLatestQuickMatchPlayerId(newestPlayer?.playerId ?? null);
+        }
+
+        return nextSession;
+      });
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!quickMatchOpen || !quickMatchSession?.matchId) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void (async () => {
+        const nextSession = await getQuickMatch(quickMatchSession.matchId);
+        if (nextSession) {
+          updateQuickMatchSession(nextSession);
+          setQuickMatchError(null);
+        }
+      })();
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [
+    quickMatchOpen,
+    quickMatchSession?.matchId,
+    updateQuickMatchSession,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !quickMatchOpen ||
+      quickMatchSession?.status !== "IN_PROGRESS" ||
+      !quickMatchSession.matchId ||
+      !quickMatchIdentity?.playerId
+    ) {
+      return;
+    }
+
+    setQuickMatchOpen(false);
+    router.push({
+      pathname: "/game",
+      params: {
+        mode: "online",
+        matchId: quickMatchSession.matchId,
+        playerId: quickMatchIdentity.playerId,
+      },
+    });
+  }, [
+    quickMatchIdentity?.playerId,
+    quickMatchOpen,
+    quickMatchSession?.matchId,
+    quickMatchSession?.status,
+    router,
+  ]);
+
+  const handleGuestPromptSignIn = React.useCallback(() => {
     setGuestPromptOpen(false);
     router.replace("/login");
   }, [router]);
+
+  const handleQuickMatchPress = React.useCallback(async () => {
+    setQuickMatchOpen(true);
+    setQuickMatchLoading(true);
+    setQuickMatchError(null);
+    setQuickMatchSession(null);
+    setLatestQuickMatchPlayerId(null);
+
+    try {
+      const identity = await getQuickMatchIdentity();
+      setQuickMatchIdentity(identity);
+
+      const session = await joinQuickMatch(identity);
+      if (!session) {
+        setQuickMatchError(
+          "Unable to join quick match. Check that the multiplayer server is running.",
+        );
+        return;
+      }
+
+      updateQuickMatchSession(session);
+    } catch {
+      setQuickMatchError(
+        "Unable to join quick match. Check that the multiplayer server is running.",
+      );
+    } finally {
+      setQuickMatchLoading(false);
+    }
+  }, [updateQuickMatchSession]);
+
+  const handleQuickMatchCancel = React.useCallback(() => {
+    const matchId = quickMatchSession?.matchId;
+    const playerId = quickMatchIdentity?.playerId;
+
+    setQuickMatchOpen(false);
+    setQuickMatchLoading(false);
+    setQuickMatchError(null);
+    setQuickMatchSession(null);
+    setLatestQuickMatchPlayerId(null);
+
+    if (matchId && playerId) {
+      void leaveQuickMatch(matchId, playerId);
+    }
+  }, [quickMatchIdentity?.playerId, quickMatchSession?.matchId]);
+
+  const handleQuickMatchStart = React.useCallback(async () => {
+    const matchId = quickMatchSession?.matchId;
+    const playerId = quickMatchIdentity?.playerId;
+    if (!matchId || !playerId) {
+      return;
+    }
+
+    setQuickMatchLoading(true);
+    setQuickMatchError(null);
+
+    try {
+      const session = await startQuickMatchGame(matchId, playerId);
+      if (!session) {
+        setQuickMatchError("Unable to start quick match yet.");
+        return;
+      }
+
+      updateQuickMatchSession(session);
+    } catch {
+      setQuickMatchError("Unable to start quick match yet.");
+    } finally {
+      setQuickMatchLoading(false);
+    }
+  }, [
+    quickMatchIdentity?.playerId,
+    quickMatchSession?.matchId,
+    updateQuickMatchSession,
+  ]);
+
+  const quickMatchPlayerCount = quickMatchSession?.players.length ?? 0;
+  const quickMatchMaxPlayers = quickMatchSession?.maxPlayers ?? 3;
+  const quickMatchReady =
+    quickMatchSession?.status === "READY" ||
+    quickMatchPlayerCount >= quickMatchMaxPlayers;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -283,7 +462,9 @@ export default function LobbyScreen(): React.ReactElement {
               styles.actionRight,
             ]}
             activeOpacity={0.85}
-            onPress={() => router.push("/under-construction")}
+            onPress={() => {
+              void handleQuickMatchPress();
+            }}
           >
             <View style={styles.diamondButtonContent}>
               <Text3D
@@ -490,11 +671,28 @@ export default function LobbyScreen(): React.ReactElement {
         visible={guestPromptOpen}
         transparent
         animationType="fade"
-        onRequestClose={handleGuestPromptClose}
+        onRequestClose={handleGuestPromptDismiss}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text3D style={styles.modalTitle}>Sign In Required</Text3D>
+            <View style={styles.modalHeader}>
+              <Text3D style={[styles.modalTitle, styles.modalHeaderTitle]}>
+                Sign In Required
+              </Text3D>
+              <TouchableOpacity
+                style={styles.modalIconCloseBtn}
+                activeOpacity={0.8}
+                onPress={handleGuestPromptDismiss}
+                accessibilityRole="button"
+                accessibilityLabel="Close sign in required modal"
+              >
+                <MaterialCommunityIcons
+                  name="close"
+                  size={20}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
 
             <Text3D style={styles.settingsHint}>
               This feature is available for signed-in players only.
@@ -503,9 +701,138 @@ export default function LobbyScreen(): React.ReactElement {
             <TouchableOpacity
               style={styles.modalCloseBtn}
               activeOpacity={0.85}
-              onPress={handleGuestPromptClose}
+              onPress={handleGuestPromptSignIn}
             >
               <Text3D style={styles.modalCloseText}>Go to Sign In</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={quickMatchOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleQuickMatchCancel}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text3D style={[styles.modalTitle, styles.modalHeaderTitle]}>
+                Quick Match Online
+              </Text3D>
+              <TouchableOpacity
+                style={styles.modalIconCloseBtn}
+                activeOpacity={0.8}
+                onPress={handleQuickMatchCancel}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel quick match"
+              >
+                <MaterialCommunityIcons
+                  name="close"
+                  size={20}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quickMatchStatusBox}>
+              {quickMatchReady ? (
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={28}
+                  color="#7dffa1"
+                />
+              ) : (
+                <ActivityIndicator size="small" color="#f6d43a" />
+              )}
+              <Text3D style={styles.quickMatchStatusText}>
+                {quickMatchReady
+                  ? "Match ready"
+                  : quickMatchLoading
+                    ? "Joining with ..."
+                    : "Waiting for players to join"}
+              </Text3D>
+            </View>
+
+            <Text3D style={styles.quickMatchCountText}>
+              {quickMatchPlayerCount} / {quickMatchMaxPlayers} players
+            </Text3D>
+
+            <View style={styles.quickMatchPlayerList}>
+              {quickMatchSession?.players.map((player, index) => {
+                const isNewest =
+                  latestQuickMatchPlayerId === player.playerId;
+                const isYou =
+                  quickMatchIdentity?.playerId === player.playerId;
+
+                return (
+                  <View
+                    key={player.playerId}
+                    style={[
+                      styles.quickMatchPlayerRow,
+                      isNewest && styles.quickMatchPlayerRowNewest,
+                    ]}
+                  >
+                    <View style={styles.quickMatchPlayerBadge}>
+                      <Text3D style={styles.quickMatchPlayerBadgeText}>
+                        {index + 1}
+                      </Text3D>
+                    </View>
+                    <Text3D style={styles.quickMatchPlayerName}>
+                      {player.playerName}
+                      {isYou ? " (You)" : ""}
+                    </Text3D>
+                  </View>
+                );
+              })}
+
+              {Array.from({
+                length: Math.max(0, quickMatchMaxPlayers - quickMatchPlayerCount),
+              }).map((_, index) => (
+                <View
+                  key={`waiting-${index}`}
+                  style={[
+                    styles.quickMatchPlayerRow,
+                    styles.quickMatchWaitingRow,
+                  ]}
+                >
+                  <View style={styles.quickMatchPlayerBadge}>
+                    <Text3D style={styles.quickMatchPlayerBadgeText}>
+                      {quickMatchPlayerCount + index + 1}
+                    </Text3D>
+                  </View>
+                  <Text3D style={styles.quickMatchWaitingText}>
+                    Waiting for player
+                  </Text3D>
+                </View>
+              ))}
+            </View>
+
+            {quickMatchError ? (
+              <Text3D style={styles.quickMatchErrorText}>
+                {quickMatchError}
+              </Text3D>
+            ) : null}
+
+            {quickMatchReady ? (
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  void handleQuickMatchStart();
+                }}
+              >
+                <Text3D style={styles.modalCloseText}>Start Game</Text3D>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity
+              style={styles.playModeCancelBtn}
+              activeOpacity={0.85}
+              onPress={handleQuickMatchCancel}
+            >
+              <Text3D style={styles.playModeCancelText}>Cancel</Text3D>
             </TouchableOpacity>
           </View>
         </View>
@@ -764,6 +1091,28 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     textAlign: "center",
   },
+  modalHeader: {
+    minHeight: 32,
+    marginBottom: 14,
+    justifyContent: "center",
+  },
+  modalHeaderTitle: {
+    marginBottom: 0,
+    paddingHorizontal: 40,
+  },
+  modalIconCloseBtn: {
+    position: "absolute",
+    right: -4,
+    top: -4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -822,6 +1171,87 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "700",
     fontSize: 13,
+  },
+  quickMatchStatusBox: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(246,212,58,0.26)",
+    backgroundColor: "rgba(7, 23, 14, 0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+  },
+  quickMatchStatusText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  quickMatchCountText: {
+    color: "#fdf0b4",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  quickMatchPlayerList: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  quickMatchPlayerRow: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+  },
+  quickMatchPlayerRowNewest: {
+    borderColor: "rgba(125,255,161,0.75)",
+    backgroundColor: "rgba(125,255,161,0.16)",
+  },
+  quickMatchWaitingRow: {
+    opacity: 0.7,
+  },
+  quickMatchPlayerBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickMatchPlayerBadgeText: {
+    color: "#f6d43a",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  quickMatchPlayerName: {
+    color: "#ffffff",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  quickMatchWaitingText: {
+    color: "rgba(255,255,255,0.66)",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  quickMatchErrorText: {
+    color: "#ffb4b4",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginBottom: 12,
+    textAlign: "center",
   },
   settingsHint: {
     color: "rgba(255,255,255,0.82)",

@@ -8,6 +8,13 @@ import Text3D from "@/components/Text3D";
 import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
+import {
+  getQuickMatch,
+  sendQuickMatchAction,
+  type QuickMatchAction,
+  type QuickMatchGame,
+  type QuickMatchSession,
+} from "@/constants/multiplayer";
 import { getEmojiForPlayerIconId } from "@/constants/playerIcons";
 import {
   getActiveBackgroundId,
@@ -44,7 +51,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from "expo-audio";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -111,6 +118,79 @@ function createInitialState(humanIcon = "🧑"): GameState {
   };
 }
 
+function createOnlineDisplayState(
+  game: QuickMatchGame,
+  viewerPlayerId: string,
+  humanIcon = "🧑",
+): GameState | null {
+  if (game.players.length < 3) {
+    return null;
+  }
+
+  const viewerIndex = game.players.findIndex(
+    (player) => player.playerId === viewerPlayerId,
+  );
+  if (viewerIndex < 0) {
+    return null;
+  }
+
+  const displayOrder = [
+    viewerIndex,
+    (viewerIndex + 1) % game.players.length,
+    (viewerIndex + game.players.length - 1) % game.players.length,
+  ];
+  const currentTurnIndex = game.players.findIndex(
+    (player) => player.playerId === game.currentTurnPlayerId,
+  );
+  const displayTurn = Math.max(0, displayOrder.indexOf(currentTurnIndex));
+  const displayPlayers: Player[] = displayOrder.map((playerIndex, index) => {
+    const player = game.players[playerIndex];
+    return {
+      name: index === 0 ? player.playerName || "You" : player.playerName,
+      cards: player.cards,
+      isHuman: index === 0,
+      icon: index === 0 ? humanIcon : "👤",
+    };
+  });
+  const turnPlayerName = displayPlayers[displayTurn]?.name ?? "Player";
+
+  return {
+    deck: game.deck,
+    discard: game.discard,
+    players: displayPlayers,
+    turn: displayTurn,
+    phase: game.phase,
+    drawnCard: game.drawnCard,
+    drawnFrom: game.drawnFrom,
+    selectedHandIdx: null,
+    movingCardIdx: null,
+    message:
+      game.message ||
+      (displayTurn === 0 ? "Your turn." : `${turnPlayerName}'s turn.`),
+    gameOver: game.gameOver,
+    aiThinking: false,
+    stopPending: false,
+  };
+}
+
+function getOnlineDisplayOrder(
+  game: QuickMatchGame,
+  viewerPlayerId: string,
+): number[] | null {
+  const viewerIndex = game.players.findIndex(
+    (player) => player.playerId === viewerPlayerId,
+  );
+  if (viewerIndex < 0 || game.players.length < 3) {
+    return null;
+  }
+
+  return [
+    viewerIndex,
+    (viewerIndex + 1) % game.players.length,
+    (viewerIndex + game.players.length - 1) % game.players.length,
+  ];
+}
+
 function getWinnerIndex(players: Player[]): number {
   let winnerIdx = 0;
   let bestScore = calcHandScore(players[0].cards);
@@ -128,7 +208,18 @@ function getWinnerIndex(players: Player[]): number {
 
 export default function GameScreen(): React.ReactElement {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    mode?: string;
+    matchId?: string;
+    playerId?: string;
+  }>();
   const insets = useSafeAreaInsets();
+  const onlineMatchId =
+    typeof params.matchId === "string" ? params.matchId : undefined;
+  const onlinePlayerId =
+    typeof params.playerId === "string" ? params.playerId : undefined;
+  const isOnlineMode =
+    params.mode === "online" && Boolean(onlineMatchId && onlinePlayerId);
   const [activeBackgroundId, setActiveBackgroundId] = useState(
     getActiveBackgroundId(),
   );
@@ -164,6 +255,7 @@ export default function GameScreen(): React.ReactElement {
   const [state, setState] = useState<GameState>(() =>
     createInitialState(getEmojiForPlayerIconId(getActivePlayerIconId())),
   );
+  const [onlineError, setOnlineError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
   const [turnAlertMode, setTurnAlertMode] =
     useState<TurnAlertMode>(getTurnAlertMode());
@@ -328,6 +420,53 @@ export default function GameScreen(): React.ReactElement {
   const activeCardBack =
     CARD_BACKS.find((item) => item.id === activeCardBackId) ?? CARD_BACKS[0];
   const sharedCardBackColor = activeCardBack.color;
+
+  const applyOnlineSession = useCallback(
+    (session: QuickMatchSession | null) => {
+      if (!session?.game || !onlinePlayerId) {
+        return;
+      }
+
+      const nextState = createOnlineDisplayState(
+        session.game,
+        onlinePlayerId,
+        getEmojiForPlayerIconId(activePlayerIconId),
+      );
+      if (!nextState) {
+        setOnlineError("Unable to load this online game.");
+        return;
+      }
+
+      const displayOrder = getOnlineDisplayOrder(session.game, onlinePlayerId);
+      if (displayOrder) {
+        setMatchWins(
+          displayOrder.map((playerIndex) => session.game?.matchWins[playerIndex] ?? 0),
+        );
+        const matchWinnerServerIndex = session.game.players.findIndex(
+          (player) => player.playerId === session.game?.matchWinnerPlayerId,
+        );
+        const matchWinnerDisplayIndex =
+          matchWinnerServerIndex >= 0
+            ? displayOrder.indexOf(matchWinnerServerIndex)
+            : -1;
+        setMatchWinnerIdx(
+          matchWinnerDisplayIndex >= 0 ? matchWinnerDisplayIndex : null,
+        );
+      }
+
+      setState((prev) => ({
+        ...nextState,
+        selectedHandIdx:
+          prev.phase === nextState.phase && prev.turn === nextState.turn
+            ? prev.selectedHandIdx
+            : null,
+      }));
+      setIsShuffling(false);
+      setRevealedHumanCount(Number.MAX_SAFE_INTEGER);
+      setOnlineError(null);
+    },
+    [activePlayerIconId, onlinePlayerId],
+  );
 
   useEffect(() => {
     void setAudioModeAsync({
@@ -568,6 +707,13 @@ export default function GameScreen(): React.ReactElement {
   ]);
 
   useEffect(() => {
+    if (isOnlineMode) {
+      clearShuffleTimers();
+      setIsShuffling(false);
+      setRevealedHumanCount(Number.MAX_SAFE_INTEGER);
+      return;
+    }
+
     const startTimer = setTimeout(() => {
       runStartShuffleAnimation();
     }, 120);
@@ -576,9 +722,44 @@ export default function GameScreen(): React.ReactElement {
     return () => {
       clearShuffleTimers();
     };
-  }, [clearShuffleTimers, runStartShuffleAnimation]);
+  }, [clearShuffleTimers, isOnlineMode, runStartShuffleAnimation]);
 
   useEffect(() => {
+    if (!isOnlineMode || !onlineMatchId) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadSession = async (): Promise<void> => {
+      const session = await getQuickMatch(onlineMatchId);
+      if (cancelled) {
+        return;
+      }
+
+      if (!session) {
+        setOnlineError("Unable to load online match.");
+        return;
+      }
+
+      applyOnlineSession(session);
+    };
+
+    void loadSession();
+    const interval = setInterval(() => {
+      void loadSession();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [applyOnlineSession, isOnlineMode, onlineMatchId]);
+
+  useEffect(() => {
+    if (isOnlineMode) {
+      return;
+    }
+
     if (!state.gameOver) {
       roundScoredRef.current = false;
       return;
@@ -597,9 +778,14 @@ export default function GameScreen(): React.ReactElement {
       }
       return next;
     });
-  }, [MATCH_WINS_TO_WIN, state.gameOver, state.players]);
+  }, [MATCH_WINS_TO_WIN, isOnlineMode, state.gameOver, state.players]);
 
   useEffect(() => {
+    if (isOnlineMode) {
+      setShowGameScreenAd(false);
+      return;
+    }
+
     if (!state.gameOver || !resultModalVisible) {
       setShowGameScreenAd(false);
       return;
@@ -613,7 +799,7 @@ export default function GameScreen(): React.ReactElement {
     return () => {
       clearTimeout(adTimer);
     };
-  }, [resultModalVisible, state.gameOver]);
+  }, [isOnlineMode, resultModalVisible, state.gameOver]);
 
   useEffect(() => {
     if (!state.gameOver) {
@@ -644,6 +830,7 @@ export default function GameScreen(): React.ReactElement {
   }, [
     WINNER_REVEAL_DURATION_SECONDS,
     clearWinnerRevealTimers,
+    isOnlineMode,
     openResultModal,
     state.gameOver,
   ]);
@@ -651,6 +838,7 @@ export default function GameScreen(): React.ReactElement {
   const recordCurrentGameStats = useCallback(() => {
     const shouldRecordNow = matchWinnerIdx !== null;
     if (
+      isOnlineMode ||
       !state.gameOver ||
       gameRecordedForRoundRef.current ||
       !shouldRecordNow
@@ -672,7 +860,7 @@ export default function GameScreen(): React.ReactElement {
         });
       }
     });
-  }, [matchWinnerIdx, state.gameOver, state.players]);
+  }, [isOnlineMode, matchWinnerIdx, state.gameOver, state.players]);
 
   useEffect(() => {
     recordCurrentGameStats();
@@ -688,6 +876,27 @@ export default function GameScreen(): React.ReactElement {
       stopPending: false,
     }));
   }, []);
+
+  const submitOnlineAction = useCallback(
+    async (action: QuickMatchAction) => {
+      if (!onlineMatchId || !onlinePlayerId) {
+        return;
+      }
+
+      const session = await sendQuickMatchAction(
+        onlineMatchId,
+        onlinePlayerId,
+        action,
+      );
+      if (!session) {
+        setOnlineError("Unable to send move. Please try again.");
+        return;
+      }
+
+      applyOnlineSession(session);
+    },
+    [applyOnlineSession, onlineMatchId, onlinePlayerId],
+  );
 
   const runAiTurn = useCallback(
     (pidx: number) => {
@@ -971,6 +1180,11 @@ export default function GameScreen(): React.ReactElement {
   );
 
   const handleDrawDeck = useCallback(() => {
+    if (isOnlineMode) {
+      void submitOnlineAction({ action: "DRAW_DECK" });
+      return;
+    }
+
     selectedSwapCardPosRef.current = null;
     setState((prev) => {
       if (prev.phase !== "action" || prev.turn !== 0 || prev.deck.length === 0)
@@ -989,9 +1203,14 @@ export default function GameScreen(): React.ReactElement {
           "Card drawn! Double tap a hand card to swap, or keep your hand.",
       };
     });
-  }, []);
+  }, [isOnlineMode, submitOnlineAction]);
 
   const handleTakeDiscard = useCallback(() => {
+    if (isOnlineMode) {
+      void submitOnlineAction({ action: "TAKE_DISCARD" });
+      return;
+    }
+
     selectedSwapCardPosRef.current = null;
     setState((prev) => {
       if (
@@ -1013,7 +1232,7 @@ export default function GameScreen(): React.ReactElement {
         message: "You took the discard! Double tap a hand card to swap.",
       };
     });
-  }, []);
+  }, [isOnlineMode, submitOnlineAction]);
 
   const handleSelectCard = useCallback(
     (idx: number, cardPos?: { x: number; y: number }) => {
@@ -1073,6 +1292,16 @@ export default function GameScreen(): React.ReactElement {
         return;
       }
 
+      if (isOnlineMode) {
+        firstSelectedCardPosRef.current = null;
+        void submitOnlineAction({
+          action: "REORDER",
+          cardIndex: fromIdx,
+          targetIndex: toIdx,
+        });
+        return;
+      }
+
       setState((prev) => {
         if (prev.phase !== "action" || prev.turn !== 0 || prev.gameOver) {
           return prev;
@@ -1120,11 +1349,19 @@ export default function GameScreen(): React.ReactElement {
         };
       });
     },
-    [playSwapAudio],
+    [isOnlineMode, playSwapAudio, submitOnlineAction],
   );
 
   const handleSwap = useCallback(
     (forcedIdx?: number, forcedCardPos?: { x: number; y: number }) => {
+      if (isOnlineMode) {
+        const swapIdx = forcedIdx ?? state.selectedHandIdx;
+        if (swapIdx === null || !state.drawnCard) return;
+        selectedSwapCardPosRef.current = null;
+        void submitOnlineAction({ action: "SWAP", cardIndex: swapIdx });
+        return;
+      }
+
       setState((prev) => {
         const swapIdx = forcedIdx ?? prev.selectedHandIdx;
         if (swapIdx === null || !prev.drawnCard) return prev;
@@ -1260,7 +1497,14 @@ export default function GameScreen(): React.ReactElement {
         return nextState;
       });
     },
-    [playSwapAudio, runAiTurn],
+    [
+      isOnlineMode,
+      playSwapAudio,
+      runAiTurn,
+      state.drawnCard,
+      state.selectedHandIdx,
+      submitOnlineAction,
+    ],
   );
 
   const handleDoubleTapCard = useCallback(
@@ -1300,6 +1544,11 @@ export default function GameScreen(): React.ReactElement {
   );
 
   const handleKeep = useCallback(() => {
+    if (isOnlineMode) {
+      void submitOnlineAction({ action: "KEEP" });
+      return;
+    }
+
     setState((prev) => {
       if (!prev.drawnCard) return prev;
       playSwapAudio();
@@ -1379,9 +1628,14 @@ export default function GameScreen(): React.ReactElement {
       );
       return nextState;
     });
-  }, [playSwapAudio, runAiTurn]);
+  }, [isOnlineMode, playSwapAudio, runAiTurn, submitOnlineAction]);
 
   const handleStop = useCallback(() => {
+    if (isOnlineMode) {
+      void submitOnlineAction({ action: "STOP" });
+      return;
+    }
+
     console.log("[STOP] Stop button pressed");
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     setState((prev) => {
@@ -1405,7 +1659,7 @@ export default function GameScreen(): React.ReactElement {
       console.log("[STOP] Triggering endGame");
       endGame("You stopped the game!");
     }, 300);
-  }, [endGame]);
+  }, [endGame, isOnlineMode, submitOnlineAction]);
 
   const resetRound = useCallback(() => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
@@ -1430,6 +1684,14 @@ export default function GameScreen(): React.ReactElement {
   }, [resetRound]);
 
   const handleResultAction = useCallback(() => {
+    if (isOnlineMode) {
+      setResultModalVisible(false);
+      void submitOnlineAction({
+        action: matchWinnerIdx !== null ? "NEW_MATCH" : "NEXT_ROUND",
+      });
+      return;
+    }
+
     recordCurrentGameStats();
     setShowGameScreenAd(false);
     if (matchWinnerIdx !== null) {
@@ -1438,7 +1700,13 @@ export default function GameScreen(): React.ReactElement {
     }
     roundScoredRef.current = false;
     resetRound();
-  }, [matchWinnerIdx, recordCurrentGameStats, resetRound]);
+  }, [
+    isOnlineMode,
+    matchWinnerIdx,
+    recordCurrentGameStats,
+    resetRound,
+    submitOnlineAction,
+  ]);
 
   const handleBackToLobby = useCallback(() => {
     router.replace("/lobby");
@@ -1529,6 +1797,16 @@ export default function GameScreen(): React.ReactElement {
             </View>
           )}
 
+          {isOnlineMode && (
+            <View style={styles.onlineGameBanner}>
+              <Text3D style={styles.onlineGameBannerText}>
+                {onlineError ??
+                  message ??
+                  (isMyTurn ? "Your turn." : `${players[turn].name}'s turn.`)}
+              </Text3D>
+            </View>
+          )}
+
           {deckToastMessage && (
             <Animated.View
               pointerEvents="none"
@@ -1586,6 +1864,7 @@ export default function GameScreen(): React.ReactElement {
                 score={calcHandScore(players[1].cards)}
                 gameOver={gameOver}
                 compact
+                showThinking={!isOnlineMode}
                 containerStyle={styles.player2HandCurve}
               />
             </View>
@@ -1644,13 +1923,14 @@ export default function GameScreen(): React.ReactElement {
                 score={calcHandScore(players[2].cards)}
                 gameOver={gameOver}
                 compact
+                showThinking={!isOnlineMode}
                 containerStyle={styles.player3HandCurve}
               />
             </View>
           </View>
 
           <ActionBar
-            gameOver={gameOver && !/stopped/i.test(message)}
+            gameOver={!isOnlineMode && gameOver && !/stopped/i.test(message)}
             onNewGame={handleNewGame}
           />
 
@@ -1983,6 +2263,26 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 11,
     fontWeight: "bold",
+  },
+  onlineGameBanner: {
+    position: "absolute",
+    top: 12,
+    left: 96,
+    right: 96,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderColor: "rgba(246,212,58,0.75)",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    zIndex: 21,
+    alignItems: "center",
+  },
+  onlineGameBannerText: {
+    color: "#f6d43a",
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
   },
   legend: {
     flexDirection: "row",

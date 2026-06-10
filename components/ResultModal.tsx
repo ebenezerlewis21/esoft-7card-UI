@@ -1,9 +1,6 @@
+import { calcHandScore, type Player } from "@/game/logic";
 import React from "react";
 import { Modal, StyleSheet, TouchableOpacity, View } from "react-native";
-import {
-  calcHandScore,
-  type Player,
-} from "@/game/logic";
 import Text3D from "./Text3D";
 
 type ResultModalProps = {
