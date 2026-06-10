@@ -8,10 +8,31 @@ export type UserProfile = {
   coins: number;
 };
 
+export type ShopItemType = "BACKGROUND" | "CARD_BACK" | "PLAYER_ICON";
+
+export type ShopCatalogItem = {
+  id: number;
+  sku: string;
+  name: string;
+  type: ShopItemType;
+  price: number;
+  properties?: Record<string, unknown>;
+};
+
+export type UserShopItem = {
+  id: number;
+  sku: string;
+  name: string;
+  type: ShopItemType;
+  equipped: boolean;
+  properties?: Record<string, unknown>;
+};
+
 type UserProfileMap = Record<string, UserProfile>;
 
 const CURRENT_USER_KEY = "@auth/currentUser";
 const CURRENT_EMAIL_KEY = "@auth/currentEmail";
+const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
 const TEST_PROFILE_NAME = "test";
 
@@ -130,7 +151,21 @@ export const clearCurrentEmail = async (): Promise<void> => {
 export const getCurrentEmail = async (): Promise<string | null> => {
   const email = await AsyncStorage.getItem(CURRENT_EMAIL_KEY);
   const trimmedEmail = email?.trim().toLowerCase() ?? "";
-  return trimmedEmail || null;
+  if (trimmedEmail) return trimmedEmail;
+
+  try {
+    const rawSavedLogin = await AsyncStorage.getItem(SAVED_LOGIN_KEY);
+    if (!rawSavedLogin) return null;
+
+    const parsed = JSON.parse(rawSavedLogin) as { email?: string };
+    const fallbackEmail = parsed.email?.trim().toLowerCase() ?? "";
+    if (!fallbackEmail) return null;
+
+    await AsyncStorage.setItem(CURRENT_EMAIL_KEY, fallbackEmail);
+    return fallbackEmail;
+  } catch {
+    return null;
+  }
 };
 
 const writeCurrentUserProfileFromBackend = async (payload: {
@@ -220,16 +255,29 @@ export const syncCurrentUserProfileFromBackend =
     } catch {
       return null;
     }
-  };
+};
 
 export const incrementCurrentUserGamesPlayedFromBackend = async (
   won = false,
 ): Promise<number | null> => {
   const apiUrl = resolveApiUrl("api/users/stats/game-played");
   const email = await getCurrentEmail();
-  if (!apiUrl || !email) return null;
+  if (!apiUrl || !email) {
+    if (__DEV__) {
+      console.log("[stats] record game skipped", {
+        hasApiUrl: Boolean(apiUrl),
+        hasEmail: Boolean(email),
+        won,
+      });
+    }
+    return null;
+  }
 
   try {
+    if (__DEV__) {
+      console.log("[stats] record game start", { apiUrl, email, won });
+    }
+
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -241,7 +289,16 @@ export const incrementCurrentUserGamesPlayedFromBackend = async (
       }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (__DEV__) {
+        console.log("[stats] record game failed", {
+          status: response.status,
+          email,
+          won,
+        });
+      }
+      return null;
+    }
 
     const payload = (await response.json()) as {
       name?: string;
@@ -250,9 +307,22 @@ export const incrementCurrentUserGamesPlayedFromBackend = async (
       gamesWon?: number;
       balance?: number;
     };
+
+    if (__DEV__) {
+      console.log("[stats] record game success", {
+        email,
+        won,
+        gamesPlayed: payload.gamesPlayed,
+        gamesWon: payload.gamesWon,
+      });
+    }
+
     const nextProfile = await writeCurrentUserProfileFromBackend(payload);
     return nextProfile?.gamesPlayed ?? null;
   } catch {
+    if (__DEV__) {
+      console.log("[stats] record game request error", { email, won });
+    }
     return null;
   }
 };
@@ -350,5 +420,104 @@ export const spendCurrentUserCoins = async (
     return nextCoins;
   } catch {
     return null;
+  }
+};
+
+export const getShopCatalogFromBackend = async (): Promise<
+  ShopCatalogItem[] | null
+> => {
+  const apiUrl = resolveApiUrl("api/shop/items");
+  if (!apiUrl) return null;
+
+  try {
+    const response = await fetch(apiUrl);
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as ShopCatalogItem[];
+    return Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getCurrentUserShopInventoryFromBackend = async (): Promise<
+  UserShopItem[] | null
+> => {
+  const apiUrl = resolveApiUrl("api/shop/inventory");
+  const email = await getCurrentEmail();
+  if (!apiUrl || !email) return null;
+
+  try {
+    const response = await fetch(
+      `${apiUrl}?email=${encodeURIComponent(email)}`,
+    );
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as UserShopItem[];
+    return Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+export const purchaseCurrentUserShopItemFromBackend = async (
+  sku: string,
+): Promise<number | null> => {
+  const apiUrl = resolveApiUrl("api/shop/purchase");
+  const email = await getCurrentEmail();
+  const normalizedSku = sku.trim();
+  if (!apiUrl || !email || !normalizedSku) return null;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        sku: normalizedSku,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as {
+      balance?: number;
+    };
+    const nextProfile = await writeCurrentUserProfileFromBackend({
+      balance: payload.balance,
+    });
+    return nextProfile?.coins ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const equipCurrentUserShopItemFromBackend = async (
+  sku: string,
+): Promise<boolean> => {
+  const apiUrl = resolveApiUrl("api/shop/equip");
+  const email = await getCurrentEmail();
+  const normalizedSku = sku.trim();
+  if (!apiUrl || !email || !normalizedSku) return false;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        sku: normalizedSku,
+      }),
+    });
+
+    return response.ok;
+  } catch {
+    return false;
   }
 };

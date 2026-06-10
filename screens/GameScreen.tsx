@@ -9,9 +9,11 @@ import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
 import { Feature } from "@/constants/feature";
+import { getEmojiForPlayerIconId } from "@/constants/playerIcons";
 import {
   getActiveBackgroundId,
   getActiveCardBackId,
+  getActivePlayerIconId,
   getAiDifficulty,
   getTurnAlertMode,
   initializeProfileSettings,
@@ -20,6 +22,7 @@ import {
   subscribeAiDifficulty,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
+  subscribePlayerIconSettings,
   subscribeSoundEnabled,
   subscribeTurnAlertMode,
   type AiDifficulty,
@@ -74,21 +77,21 @@ type GameState = {
   stopPending?: boolean;
 };
 
-function createInitialState(): GameState {
+function createInitialState(humanIcon = "🧑"): GameState {
   const deck = shuffle(makeDeck());
   const players: Player[] = [
-    { name: "You", cards: deck.splice(0, 7), isHuman: true, icon: "robot" },
+    { name: "You", cards: deck.splice(0, 7), isHuman: true, icon: humanIcon },
     {
       name: "Player 2",
       cards: deck.splice(0, 7),
       isHuman: false,
-      icon: "robot",
+      icon: "🤖",
     },
     {
       name: "Player 3",
       cards: deck.splice(0, 7),
       isHuman: false,
-      icon: "robot",
+      icon: "🤖",
     },
   ];
 
@@ -109,6 +112,21 @@ function createInitialState(): GameState {
   };
 }
 
+function getWinnerIndex(players: Player[]): number {
+  let winnerIdx = 0;
+  let bestScore = calcHandScore(players[0].cards);
+
+  for (let i = 1; i < players.length; i++) {
+    const score = calcHandScore(players[i].cards);
+    if (score < bestScore) {
+      bestScore = score;
+      winnerIdx = i;
+    }
+  }
+
+  return winnerIdx;
+}
+
 export default function GameScreen(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -120,6 +138,9 @@ export default function GameScreen(): React.ReactElement {
   );
   const [activeCardBackId, setActiveCardBackId] = useState(
     getActiveCardBackId(),
+  );
+  const [activePlayerIconId, setActivePlayerIconId] = useState(
+    getActivePlayerIconId(),
   );
   const MATCH_WINS_TO_WIN = 3;
   const SHUFFLE_SOUND_SOURCE = require("../assets/audio/shuffle.mp3");
@@ -144,7 +165,9 @@ export default function GameScreen(): React.ReactElement {
   const DECK_TOAST_VISIBLE_MS = 5000;
   const SHUFFLE_STEP_MS = SHUFFLE_MOVE_DURATION_MS + SHUFFLE_GAP_MS;
   const HAND_REVEAL_STAGGER_MS = 130;
-  const [state, setState] = useState<GameState>(() => createInitialState());
+  const [state, setState] = useState<GameState>(() =>
+    createInitialState(getEmojiForPlayerIconId(getActivePlayerIconId())),
+  );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
   const [turnAlertMode, setTurnAlertMode] =
     useState<TurnAlertMode>(getTurnAlertMode());
@@ -263,6 +286,7 @@ export default function GameScreen(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    setActiveBackgroundId(getActiveBackgroundId());
     const unsubscribe = subscribeBackgroundSettings(() => {
       setActiveBackgroundId(getActiveBackgroundId());
     });
@@ -271,12 +295,36 @@ export default function GameScreen(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    setActiveCardBackId(getActiveCardBackId());
     const unsubscribe = subscribeCardBackSettings(() => {
       setActiveCardBackId(getActiveCardBackId());
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    setActivePlayerIconId(getActivePlayerIconId());
+    const unsubscribe = subscribePlayerIconSettings(() => {
+      setActivePlayerIconId(getActivePlayerIconId());
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const humanIcon = getEmojiForPlayerIconId(activePlayerIconId);
+    setState((prev) => {
+      const nextPlayers = prev.players.map((player, index) =>
+        index === 0 ? { ...player, icon: humanIcon } : player,
+      );
+
+      return {
+        ...prev,
+        players: nextPlayers,
+      };
+    });
+  }, [activePlayerIconId]);
 
   const activeBackground =
     BACKGROUNDS.find((item) => item.id === activeBackgroundId) ??
@@ -544,15 +592,7 @@ export default function GameScreen(): React.ReactElement {
     if (roundScoredRef.current) return;
     roundScoredRef.current = true;
 
-    let winnerIdx = 0;
-    let bestScore = calcHandScore(state.players[0].cards);
-    for (let i = 1; i < state.players.length; i++) {
-      const score = calcHandScore(state.players[i].cards);
-      if (score < bestScore) {
-        bestScore = score;
-        winnerIdx = i;
-      }
-    }
+    const winnerIdx = getWinnerIndex(state.players);
 
     setMatchWins((prev) => {
       const next = prev.slice();
@@ -613,28 +653,33 @@ export default function GameScreen(): React.ReactElement {
     state.gameOver,
   ]);
 
-  useEffect(() => {
-    if (!state.gameOver) {
+  const recordCurrentGameStats = useCallback(() => {
+    const shouldRecordNow = skeletonEnabled ? matchWinnerIdx !== null : true;
+    if (!state.gameOver || gameRecordedForRoundRef.current || !shouldRecordNow) {
       return;
     }
 
-    if (gameRecordedForRoundRef.current) {
-      return;
-    }
-
-    let winnerIdx = 0;
-    let bestScore = calcHandScore(state.players[0].cards);
-    for (let i = 1; i < state.players.length; i++) {
-      const score = calcHandScore(state.players[i].cards);
-      if (score < bestScore) {
-        bestScore = score;
-        winnerIdx = i;
-      }
-    }
+    const winnerIdx = getWinnerIndex(state.players);
+    const matchWinner = skeletonEnabled ? matchWinnerIdx : winnerIdx;
+    const won = matchWinner === 0;
 
     gameRecordedForRoundRef.current = true;
-    void incrementCurrentUserGamesPlayedFromBackend(winnerIdx === 0);
-  }, [state.gameOver, state.players]);
+    void incrementCurrentUserGamesPlayedFromBackend(won).then(
+      (gamesPlayed) => {
+        if (__DEV__) {
+          console.log("[game] server stats update result", {
+            winnerIdx: matchWinner,
+            won,
+            gamesPlayed,
+          });
+        }
+      },
+    );
+  }, [matchWinnerIdx, skeletonEnabled, state.gameOver, state.players]);
+
+  useEffect(() => {
+    recordCurrentGameStats();
+  }, [recordCurrentGameStats]);
 
   const endGame = useCallback((message: string) => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
@@ -1369,7 +1414,7 @@ export default function GameScreen(): React.ReactElement {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     clearShuffleTimers();
     setShowGameScreenAd(false);
-    setState(createInitialState());
+    setState(createInitialState(getEmojiForPlayerIconId(activePlayerIconId)));
     setAnimatedCards([]);
     setIsShuffling(true);
     setRevealedHumanCount(0);
@@ -1377,7 +1422,7 @@ export default function GameScreen(): React.ReactElement {
       runStartShuffleAnimation();
     }, 140);
     shuffleTimersRef.current.push(restartTimer);
-  }, [clearShuffleTimers, runStartShuffleAnimation]);
+  }, [activePlayerIconId, clearShuffleTimers, runStartShuffleAnimation]);
 
   const handleNewGame = useCallback(() => {
     setShowGameScreenAd(false);
@@ -1393,6 +1438,7 @@ export default function GameScreen(): React.ReactElement {
   }, [resetRound, skeletonEnabled]);
 
   const handleResultAction = useCallback(() => {
+    recordCurrentGameStats();
     setShowGameScreenAd(false);
     if (matchWinnerIdx !== null) {
       setMatchWins([0, 0, 0]);
@@ -1400,7 +1446,7 @@ export default function GameScreen(): React.ReactElement {
     }
     roundScoredRef.current = false;
     resetRound();
-  }, [matchWinnerIdx, resetRound]);
+  }, [matchWinnerIdx, recordCurrentGameStats, resetRound]);
 
   const handleBackToLobby = useCallback(() => {
     router.replace("/lobby");

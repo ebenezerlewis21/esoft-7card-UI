@@ -1,4 +1,10 @@
-export type CardBackId = "royal" | "ember" | "emerald" | "midnight";
+export type CardBackId =
+  | "royal"
+  | "golden"
+  | "rose"
+  | "ember"
+  | "emerald"
+  | "midnight";
 
 export type CardBackDefinition = {
   id: CardBackId;
@@ -17,6 +23,20 @@ export const CARD_BACKS: CardBackDefinition[] = [
     cost: 1200,
     accent: "#7ab8ff",
     color: "#173b92",
+  },
+  {
+    id: "golden",
+    name: "Golden Card",
+    cost: 1800,
+    accent: "#ffeb99",
+    color: "#b8860b",
+  },
+  {
+    id: "rose",
+    name: "Rose Card",
+    cost: 1800,
+    accent: "#ff9bc5",
+    color: "#c71585",
   },
   {
     id: "ember",

@@ -1,4 +1,10 @@
-export type BackgroundId = "emerald" | "royal" | "ember" | "midnight";
+export type BackgroundId =
+  | "emerald"
+  | "royal"
+  | "golden"
+  | "rose"
+  | "ember"
+  | "midnight";
 
 export type BackgroundDefinition = {
   id: BackgroundId;
@@ -24,6 +30,20 @@ export const BACKGROUNDS: BackgroundDefinition[] = [
     cost: 3600,
     accent: "#7ab8ff",
     background: "#123a72",
+  },
+  {
+    id: "golden",
+    name: "Golden Temple",
+    cost: 4800,
+    accent: "#ffeb99",
+    background: "#d4a574",
+  },
+  {
+    id: "rose",
+    name: "Rose Salon",
+    cost: 4800,
+    accent: "#ff9bc5",
+    background: "#6b3b5f",
   },
   {
     id: "ember",

@@ -230,7 +230,7 @@ export default function PlayerHand({
           >
             <View style={[styles.nameRow, styles.humanNameRow]}>
               <View style={styles.humanIconBadge}>
-                <Text3D style={styles.humanIconText}>🧑</Text3D>
+                <Text3D style={styles.humanIconText}>{player.icon ?? "🧑"}</Text3D>
               </View>
               {isCurrentTurn && !gameOver && <View style={styles.turnDot} />}
               <Text3D
@@ -398,7 +398,7 @@ export default function PlayerHand({
           >
             <View style={styles.nameRow}>
               <View style={styles.botIconBadge}>
-                <Text3D style={styles.botIconText}>🤖</Text3D>
+                <Text3D style={styles.botIconText}>{player.icon ?? "🤖"}</Text3D>
               </View>
               {isCurrentTurn && !gameOver && <View style={styles.turnDot} />}
               <Text3D style={styles.name}>{player.name}</Text3D>

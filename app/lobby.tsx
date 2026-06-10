@@ -19,9 +19,7 @@ import {
   getCurrentUserProfile,
   syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
-import { BACKGROUNDS } from "../constants/backgrounds";
 import {
-  getActiveBackgroundId,
   getAiDifficulty,
   getTurnAlertMode,
   initializeProfileSettings,
@@ -30,7 +28,6 @@ import {
   setAiDifficulty,
   setSoundEnabled,
   setTurnAlertMode,
-  subscribeBackgroundSettings,
   subscribeSoundEnabled,
   subscribeTurnAlertMode,
   type AiDifficulty,
@@ -57,12 +54,10 @@ export default function LobbyScreen(): React.ReactElement {
     React.useState<TurnAlertMode>(getTurnAlertMode());
   const [selectedAiDifficulty, setSelectedAiDifficulty] =
     React.useState<AiDifficulty>(getAiDifficulty());
-  const [activeBackgroundId, setActiveBackgroundIdState] = React.useState(
-    getActiveBackgroundId(),
-  );
   const winRatio = Math.round(
     (playerProfile.wins / Math.max(1, playerProfile.gamesPlayed)) * 100,
   );
+  const winRatioDisplay = winRatio === 0 ? "-" : `${winRatio}%`;
   const coinsDisplay = React.useMemo(
     () =>
       new Intl.NumberFormat("en-US", {
@@ -125,10 +120,6 @@ export default function LobbyScreen(): React.ReactElement {
       setSoundEnabledState(enabled);
     });
 
-    const unsubscribeBackgrounds = subscribeBackgroundSettings(() => {
-      setActiveBackgroundIdState(getActiveBackgroundId());
-    });
-
     const unsubscribeTurnAlertMode = subscribeTurnAlertMode((mode) => {
       setTurnAlertModeState(mode);
     });
@@ -139,17 +130,9 @@ export default function LobbyScreen(): React.ReactElement {
     return () => {
       cancelled = true;
       unsubscribe();
-      unsubscribeBackgrounds();
       unsubscribeTurnAlertMode();
     };
   }, []);
-
-  const activeBackground = React.useMemo(
-    () =>
-      BACKGROUNDS.find((item) => item.id === activeBackgroundId) ??
-      BACKGROUNDS[0],
-    [activeBackgroundId],
-  );
 
   const handleSignOut = React.useCallback(async () => {
     try {
@@ -165,12 +148,7 @@ export default function LobbyScreen(): React.ReactElement {
   }, [router]);
 
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        { backgroundColor: activeBackground.background },
-      ]}
-    >
+    <SafeAreaView style={styles.container}>
       <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -223,7 +201,7 @@ export default function LobbyScreen(): React.ReactElement {
           <View style={styles.profileStatsGrid}>
             <View style={styles.statItem}>
               <Text3D style={styles.statLabel}>Win Ratio</Text3D>
-              <Text3D style={styles.statValue}>{winRatio}%</Text3D>
+              <Text3D style={styles.statValue}>{winRatioDisplay}</Text3D>
             </View>
 
             <View style={styles.statItem}>

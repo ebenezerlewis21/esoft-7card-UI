@@ -5,6 +5,11 @@ import {
     type BackgroundId,
 } from "./backgrounds";
 import { CARD_BACKS, DEFAULT_CARD_BACK_ID, type CardBackId } from "./cardbacks";
+import {
+  DEFAULT_PLAYER_ICON_ID,
+  PLAYER_ICONS,
+  type PlayerIconId,
+} from "./playerIcons";
 
 const SOUND_ENABLED_KEY = "@settings/soundEnabled";
 const TURN_ALERT_MODE_KEY = "@settings/turnAlertMode";
@@ -14,6 +19,8 @@ const OWNED_BACKGROUND_IDS_KEY = "@profile/ownedBackgroundIds";
 const ACTIVE_BACKGROUND_ID_KEY = "@profile/activeBackgroundId";
 const OWNED_CARD_BACK_IDS_KEY = "@profile/ownedCardBackIds";
 const ACTIVE_CARD_BACK_ID_KEY = "@profile/activeCardBackId";
+const OWNED_PLAYER_ICON_IDS_KEY = "@profile/ownedPlayerIconIds";
+const ACTIVE_PLAYER_ICON_ID_KEY = "@profile/activePlayerIconId";
 
 const INITIAL_PLAYER_COINS = 25000;
 
@@ -37,6 +44,10 @@ let activeBackgroundId: BackgroundId = DEFAULT_BACKGROUND_ID;
 let ownedCardBackIds = new Set<CardBackId>([DEFAULT_CARD_BACK_ID]);
 const cardBackListeners = new Set<() => void>();
 let activeCardBackId: CardBackId = DEFAULT_CARD_BACK_ID;
+
+let ownedPlayerIconIds = new Set<PlayerIconId>([DEFAULT_PLAYER_ICON_ID]);
+const playerIconListeners = new Set<() => void>();
+let activePlayerIconId: PlayerIconId = DEFAULT_PLAYER_ICON_ID;
 
 let profileHydratePromise: Promise<void> | null = null;
 
@@ -103,6 +114,14 @@ export function getActiveCardBackId(): CardBackId {
   return activeCardBackId;
 }
 
+export function getOwnedPlayerIconIds(): PlayerIconId[] {
+  return Array.from(ownedPlayerIconIds);
+}
+
+export function getActivePlayerIconId(): PlayerIconId {
+  return activePlayerIconId;
+}
+
 export function subscribeBackgroundSettings(listener: () => void): () => void {
   backgroundListeners.add(listener);
   return () => {
@@ -114,6 +133,13 @@ export function subscribeCardBackSettings(listener: () => void): () => void {
   cardBackListeners.add(listener);
   return () => {
     cardBackListeners.delete(listener);
+  };
+}
+
+export function subscribePlayerIconSettings(listener: () => void): () => void {
+  playerIconListeners.add(listener);
+  return () => {
+    playerIconListeners.delete(listener);
   };
 }
 
@@ -166,6 +192,26 @@ function persistActiveCardBackId(): void {
   void AsyncStorage.setItem(ACTIVE_CARD_BACK_ID_KEY, activeCardBackId).catch(
     () => {
       writeToWebStorage(ACTIVE_CARD_BACK_ID_KEY, activeCardBackId);
+    },
+  );
+}
+
+function persistOwnedPlayerIconIds(): void {
+  void AsyncStorage.setItem(
+    OWNED_PLAYER_ICON_IDS_KEY,
+    JSON.stringify(Array.from(ownedPlayerIconIds)),
+  ).catch(() => {
+    writeToWebStorage(
+      OWNED_PLAYER_ICON_IDS_KEY,
+      JSON.stringify(Array.from(ownedPlayerIconIds)),
+    );
+  });
+}
+
+function persistActivePlayerIconId(): void {
+  void AsyncStorage.setItem(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId).catch(
+    () => {
+      writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
     },
   );
 }
@@ -305,6 +351,36 @@ export function replaceOwnedCardBack(
   persistOwnedCardBackIds();
 
   return true;
+}
+
+export function setActivePlayerIconId(playerIconId: PlayerIconId): void {
+  if (!ownedPlayerIconIds.has(playerIconId)) return;
+
+  activePlayerIconId = playerIconId;
+  playerIconListeners.forEach((listener) => listener());
+
+  void AsyncStorage.setItem(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId).catch(
+    () => {
+      writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
+    },
+  );
+}
+
+export function unlockPlayerIcon(playerIconId: PlayerIconId): boolean {
+  if (ownedPlayerIconIds.has(playerIconId)) return true;
+
+  ownedPlayerIconIds = new Set([...ownedPlayerIconIds, playerIconId]);
+  playerIconListeners.forEach((listener) => listener());
+  persistOwnedPlayerIconIds();
+
+  return true;
+}
+
+function normalizePlayerIconId(value: string | null): PlayerIconId | null {
+  if (!value) return null;
+
+  const matched = PLAYER_ICONS.find((item) => item.id === value);
+  return matched ? matched.id : null;
 }
 
 function readSoundEnabledFromWebStorage(): string | null {
@@ -447,6 +523,8 @@ async function loadProfileSettings(): Promise<void> {
   let storedActive: string | null = null;
   let storedOwnedCardBacks: string | null = null;
   let storedActiveCardBack: string | null = null;
+  let storedOwnedPlayerIcons: string | null = null;
+  let storedActivePlayerIcon: string | null = null;
 
   try {
     storedCoins = await AsyncStorage.getItem(PLAYER_COINS_KEY);
@@ -454,12 +532,16 @@ async function loadProfileSettings(): Promise<void> {
     storedActive = await AsyncStorage.getItem(ACTIVE_BACKGROUND_ID_KEY);
     storedOwnedCardBacks = await AsyncStorage.getItem(OWNED_CARD_BACK_IDS_KEY);
     storedActiveCardBack = await AsyncStorage.getItem(ACTIVE_CARD_BACK_ID_KEY);
+    storedOwnedPlayerIcons = await AsyncStorage.getItem(OWNED_PLAYER_ICON_IDS_KEY);
+    storedActivePlayerIcon = await AsyncStorage.getItem(ACTIVE_PLAYER_ICON_ID_KEY);
   } catch {
     storedCoins = readStorageValue(PLAYER_COINS_KEY);
     storedOwned = readStorageValue(OWNED_BACKGROUND_IDS_KEY);
     storedActive = readStorageValue(ACTIVE_BACKGROUND_ID_KEY);
     storedOwnedCardBacks = readStorageValue(OWNED_CARD_BACK_IDS_KEY);
     storedActiveCardBack = readStorageValue(ACTIVE_CARD_BACK_ID_KEY);
+    storedOwnedPlayerIcons = readStorageValue(OWNED_PLAYER_ICON_IDS_KEY);
+    storedActivePlayerIcon = readStorageValue(ACTIVE_PLAYER_ICON_ID_KEY);
   }
 
   if (storedCoins !== null) {
@@ -506,6 +588,23 @@ async function loadProfileSettings(): Promise<void> {
     }
   }
 
+  if (storedOwnedPlayerIcons !== null) {
+    try {
+      const parsedOwned = JSON.parse(storedOwnedPlayerIcons) as unknown;
+      if (Array.isArray(parsedOwned)) {
+        const nextOwned = parsedOwned
+          .map((value) =>
+            normalizePlayerIconId(typeof value === "string" ? value : null),
+          )
+          .filter((value): value is PlayerIconId => value !== null);
+
+        ownedPlayerIconIds = normalizeOwnedIds(nextOwned, DEFAULT_PLAYER_ICON_ID);
+      }
+    } catch {
+      // Keep defaults if parsing fails.
+    }
+  }
+
   const normalizedActiveCardBack =
     typeof storedActiveCardBack === "string"
       ? (CARD_BACKS.find((item) => item.id === storedActiveCardBack)?.id ??
@@ -529,9 +628,21 @@ async function loadProfileSettings(): Promise<void> {
     activeBackgroundId = firstOwned ?? DEFAULT_BACKGROUND_ID;
   }
 
+  const normalizedActivePlayerIcon = normalizePlayerIconId(storedActivePlayerIcon);
+  if (
+    normalizedActivePlayerIcon &&
+    ownedPlayerIconIds.has(normalizedActivePlayerIcon)
+  ) {
+    activePlayerIconId = normalizedActivePlayerIcon;
+  } else if (!ownedPlayerIconIds.has(activePlayerIconId)) {
+    const firstOwnedPlayerIcon = ownedPlayerIconIds.values().next().value;
+    activePlayerIconId = firstOwnedPlayerIcon ?? DEFAULT_PLAYER_ICON_ID;
+  }
+
   coinsListeners.forEach((listener) => listener(playerCoins));
   backgroundListeners.forEach((listener) => listener());
   cardBackListeners.forEach((listener) => listener());
+  playerIconListeners.forEach((listener) => listener());
 }
 
 export function initializeProfileSettings(): Promise<void> {
