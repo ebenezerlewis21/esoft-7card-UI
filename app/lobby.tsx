@@ -402,7 +402,7 @@ export default function LobbyScreen(): React.ReactElement {
       </SafeAreaView>
 
       <View style={styles.panel}>
-        <Text3D style={styles.title}>7-Card Lowball</Text3D>
+        <Text3D style={styles.title}>7-Card Rummy</Text3D>
         <Text3D style={styles.subtitle}>Choose a mode to start</Text3D>
 
         <View style={styles.profileCard}>

@@ -1761,7 +1761,7 @@ export default function GameScreen(): React.ReactElement {
       />
 
       <View style={styles.container}>
-        <Text3D style={styles.backgroundTitle}>7-Card Lowball</Text3D>
+        <Text3D style={styles.backgroundTitle}>7-Card Rummy</Text3D>
         <View
           style={[
             styles.board,

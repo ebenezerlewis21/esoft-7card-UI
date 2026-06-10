@@ -27,6 +27,7 @@ import {
   setCurrentName,
   setGuestSession,
 } from "../constants/auth";
+import GoogleAdMobBanner from "../components/GoogleAdMobBanner";
 
 type AuthMode = "signin" | "signup";
 type ThirdPartyProvider = "google" | "apple" | "facebook";
@@ -43,6 +44,9 @@ const THIRD_PARTY_AUTH_URLS: Record<ThirdPartyProvider, string> = {
 const Feature = {
   thirdPartySignin: {
     enabled: false,
+  },
+  sponsorAd: {
+    enabled: true,
   },
 } as const;
 
@@ -187,6 +191,7 @@ export default function LoginScreen(): React.ReactElement {
 
   const destination = "/lobby";
   const isThirdPartyAuthEnabled = Feature.thirdPartySignin.enabled;
+  const isSponsorAdEnabled = Feature.sponsorAd.enabled;
 
   const submitLabel = authMode === "signup" ? "Create Account" : "Sign In";
 
@@ -792,7 +797,7 @@ export default function LoginScreen(): React.ReactElement {
           <Text3D style={styles.kicker} animate={false}>
             {authMode === "signup" ? "Create Profile" : "Welcome Back"}
           </Text3D>
-          <Text3D style={styles.title}>7-Card Lowball</Text3D>
+          <Text3D style={styles.title}>7-Card Rummy</Text3D>
           <Text3D style={styles.subtitle} animate={false}>
             {authMode === "signup"
               ? "Create your account to save stats and start your climb."
@@ -1090,6 +1095,39 @@ export default function LoginScreen(): React.ReactElement {
             </Text3D>
           </Pressable>
         </Animated.View>
+
+        {isSponsorAdEnabled && authMode === "signin" ? (
+          <Animated.View
+            style={[
+              styles.sponsorBanner,
+              {
+                opacity: cardIntroOpacity,
+                transform: [
+                  {
+                    translateY: cardIntroY.interpolate({
+                      inputRange: [0, 22],
+                      outputRange: [0, 8],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.sponsorHeader}>
+              <View style={styles.sponsorIcon}>
+                <MaterialCommunityIcons
+                  name="google-ads"
+                  size={24}
+                  color="#ffe7a3"
+                />
+              </View>
+              <Text3D style={styles.sponsorLabel} animate={false}>
+                Google Sponsored Ad
+              </Text3D>
+            </View>
+            <GoogleAdMobBanner />
+          </Animated.View>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1327,5 +1365,34 @@ const styles = StyleSheet.create({
     color: "#d9e7ff",
     fontSize: 15,
     fontWeight: "700",
+  },
+  sponsorBanner: {
+    minHeight: 132,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 231, 163, 0.34)",
+    backgroundColor: "#1b2638",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  sponsorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  sponsorIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(244, 198, 91, 0.16)",
+  },
+  sponsorLabel: {
+    color: "#d8e2f5",
+    fontSize: 12,
+    fontWeight: "800",
   },
 });

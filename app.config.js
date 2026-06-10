@@ -17,8 +17,24 @@ module.exports = ({ config }) => {
 
   const nameSuffix = envSuffixByName[appEnv] ?? "Dev";
   const slugSuffix = envSuffixBySlug[appEnv] ?? "-dev";
-  const baseName = (appJson?.name || "my-app").trim();
-  const baseSlug = (appJson?.slug || "my-app").trim();
+  const baseName = (appJson?.name || "7-Card Rummy").trim();
+  const baseSlug = (appJson?.slug || "7card-rummy").trim();
+  const googleMobileAdsAndroidAppId =
+    process.env.EXPO_PUBLIC_GOOGLE_ADMOB_ANDROID_APP_ID ||
+    process.env.GOOGLE_ADMOB_ANDROID_APP_ID ||
+    "ca-app-pub-3940256099942544~3347511713";
+  const googleMobileAdsIosAppId =
+    process.env.EXPO_PUBLIC_GOOGLE_ADMOB_IOS_APP_ID ||
+    process.env.GOOGLE_ADMOB_IOS_APP_ID ||
+    "ca-app-pub-3940256099942544~1458002511";
+  const basePlugins = config?.plugins ?? appJson?.plugins ?? [];
+  const pluginsWithoutGoogleMobileAds = basePlugins.filter((plugin) => {
+    if (Array.isArray(plugin)) {
+      return plugin[0] !== "react-native-google-mobile-ads";
+    }
+
+    return plugin !== "react-native-google-mobile-ads";
+  });
 
   const expoConfig = {
     ...(appJson ?? {}),
@@ -30,6 +46,16 @@ module.exports = ({ config }) => {
       ...(config?.extra ?? {}),
       appEnv,
     },
+    plugins: [
+      ...pluginsWithoutGoogleMobileAds,
+      [
+        "react-native-google-mobile-ads",
+        {
+          androidAppId: googleMobileAdsAndroidAppId,
+          iosAppId: googleMobileAdsIosAppId,
+        },
+      ],
+    ],
   };
 
   if (!expoConfig.scheme) {

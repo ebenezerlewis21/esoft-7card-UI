@@ -190,7 +190,7 @@ export default function LaunchIntro({
         ]}
       >
         <Text style={styles.company}>esoft</Text>
-        <Text style={styles.gameTitle}>7-Card Lowball</Text>
+        <Text style={styles.gameTitle}>7-Card Rummy</Text>
       </Animated.View>
     </Animated.View>
   );
