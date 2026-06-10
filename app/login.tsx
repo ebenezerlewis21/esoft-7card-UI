@@ -16,13 +16,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  type AuthCredential,
   clearAuthCredential,
   clearCurrentEmail,
   clearCurrentName,
+  clearGuestSession,
   ensureUserProfile,
   setAuthCredential,
   setCurrentEmail,
   setCurrentName,
+  setGuestSession,
 } from "../constants/auth";
 
 type AuthMode = "signin" | "signup";
@@ -37,6 +40,35 @@ const THIRD_PARTY_AUTH_URLS: Record<ThirdPartyProvider, string> = {
   facebook: "https://www.facebook.com/login",
 };
 
+const Feature = {
+  thirdPartySignin: {
+    enabled: false,
+  },
+} as const;
+
+type AuthResponsePayload = {
+  success?: boolean;
+  name?: string;
+  token?: string;
+  accessToken?: string;
+  access_token?: string;
+  authToken?: string;
+  bearerToken?: string;
+  jwt?: string;
+  sessionToken?: string;
+  credentialType?: string;
+  expiresAt?: string;
+  expires_at?: string;
+  refreshToken?: string;
+  refresh_token?: string;
+  refreshTokenExpiresAt?: string;
+  refresh_token_expires_at?: string;
+  auth?: AuthResponsePayload;
+  data?: AuthResponsePayload;
+  session?: AuthResponsePayload;
+  user?: AuthResponsePayload;
+};
+
 const debugAuth = (
   message: string,
   payload?: Record<string, unknown>,
@@ -48,6 +80,78 @@ const debugAuth = (
   }
 
   console.log(`[login] ${message}`);
+};
+
+const firstStringValue = (
+  payload: AuthResponsePayload,
+  keys: (keyof AuthResponsePayload)[],
+): string | null => {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  for (const key of ["auth", "data", "session", "user"] as const) {
+    const nested = payload[key];
+    if (nested && typeof nested === "object") {
+      const value = firstStringValue(nested, keys);
+      if (value) return value;
+    }
+  }
+
+  return null;
+};
+
+const tokenFromAuthorizationHeader = (headers: Headers): string | null => {
+  const authorization =
+    headers.get("authorization") ??
+    headers.get("Authorization") ??
+    headers.get("x-auth-token") ??
+    headers.get("X-Auth-Token");
+  const value = authorization?.trim() ?? "";
+  if (!value) return null;
+
+  const bearerMatch = value.match(/^Bearer\s+(.+)$/i);
+  return (bearerMatch?.[1] ?? value).trim() || null;
+};
+
+const getObjectKeys = (payload: unknown): string[] =>
+  payload && typeof payload === "object" && !Array.isArray(payload)
+    ? Object.keys(payload as Record<string, unknown>)
+    : [];
+
+const credentialFromAuthPayload = (
+  payload: AuthResponsePayload,
+  responseHeaders?: Headers,
+): AuthCredential | null => {
+  const token =
+    firstStringValue(payload, [
+      "token",
+      "accessToken",
+      "access_token",
+      "authToken",
+      "bearerToken",
+      "jwt",
+      "sessionToken",
+    ]) ??
+    (responseHeaders ? tokenFromAuthorizationHeader(responseHeaders) : null);
+
+  if (!token) {
+    return null;
+  }
+
+  return {
+    token,
+    type: "Bearer",
+    expiresAt: firstStringValue(payload, ["expiresAt", "expires_at"]),
+    refreshToken: firstStringValue(payload, ["refreshToken", "refresh_token"]),
+    refreshTokenExpiresAt: firstStringValue(payload, [
+      "refreshTokenExpiresAt",
+      "refresh_token_expires_at",
+    ]),
+  };
 };
 
 export default function LoginScreen(): React.ReactElement {
@@ -82,7 +186,7 @@ export default function LoginScreen(): React.ReactElement {
   const glowDrift = React.useRef(new Animated.Value(0)).current;
 
   const destination = "/lobby";
-  const isThirdPartyAuthEnabled = true;
+  const isThirdPartyAuthEnabled = Feature.thirdPartySignin.enabled;
 
   const submitLabel = authMode === "signup" ? "Create Account" : "Sign In";
 
@@ -98,14 +202,12 @@ export default function LoginScreen(): React.ReactElement {
           email?: string;
           name?: string;
           username?: string;
-          password?: string;
           rememberMe?: boolean;
         };
 
         if (parsed.rememberMe) {
           setRememberMe(true);
           setEmail(parsed.email ?? "");
-          setPassword(parsed.password ?? "");
           debugAuth("loaded saved login", {
             email: parsed.email ?? "",
             rememberMe: true,
@@ -241,6 +343,7 @@ export default function LoginScreen(): React.ReactElement {
 
       try {
         await clearAuthCredential();
+        await clearGuestSession();
 
         const response = await fetch(loginUrl, {
           method: "POST",
@@ -253,9 +356,7 @@ export default function LoginScreen(): React.ReactElement {
           }),
         });
 
-        const acceptedByStatus = response.ok || response.status === 302;
-
-        if (!acceptedByStatus) {
+        if (!response.ok) {
           debugAuth("dev login rejected", {
             status: response.status,
             email: trimmedEmail,
@@ -284,50 +385,47 @@ export default function LoginScreen(): React.ReactElement {
         });
 
         try {
-          const payload = (await response.json()) as {
-            success?: boolean;
-            name?: string;
-            token?: string;
-            accessToken?: string;
-            sessionToken?: string;
-            credentialType?: "Bearer";
-            expiresAt?: string;
-            refreshToken?: string;
-            refreshTokenExpiresAt?: string;
-          };
+          const payload = (await response.json()) as AuthResponsePayload;
           if (payload.success === false) {
             setErrorMessage("Incorrect email or password.");
             return;
           }
 
-          const token =
-            payload.token?.trim() ??
-            payload.accessToken?.trim() ??
-            payload.sessionToken?.trim() ??
-            "";
-
-          if (__DEV__) {
-            console.log("[login] auth token from response", token || null);
-          }
-
-          if (token) {
-            await setAuthCredential({
-              token,
-              type: "Bearer",
-              expiresAt: payload.expiresAt ?? null,
-              refreshToken: payload.refreshToken ?? null,
-              refreshTokenExpiresAt: payload.refreshTokenExpiresAt ?? null,
+          const credential = credentialFromAuthPayload(
+            payload,
+            response.headers,
+          );
+          if (!credential) {
+            debugAuth("login accepted without bearer token", {
+              topLevelKeys: getObjectKeys(payload),
+              authKeys: getObjectKeys(payload.auth),
+              dataKeys: getObjectKeys(payload.data),
+              sessionKeys: getObjectKeys(payload.session),
+              userKeys: getObjectKeys(payload.user),
+              hasAuthorizationHeader: Boolean(
+                response.headers.get("authorization") ??
+                  response.headers.get("Authorization"),
+              ),
+              hasXAuthTokenHeader: Boolean(
+                response.headers.get("x-auth-token") ??
+                  response.headers.get("X-Auth-Token"),
+              ),
             });
-          } else {
-            debugAuth("login succeeded without auth token in response body");
+            setErrorMessage("Sign-in response did not include an auth token.");
+            return;
           }
 
-          if (typeof payload.name === "string" && payload.name.trim()) {
-            loginResponseName = payload.name.trim();
+          await setAuthCredential(credential);
+
+          const responseName = firstStringValue(payload, ["name"]);
+          if (responseName) {
+            loginResponseName = responseName;
           }
         } catch {
-          // Backend returned non-JSON (e.g. cookie-based or redirect flow) — rely on HTTP status.
-          debugAuth("login response was not JSON, proceeding on HTTP status");
+          // Backend auth must return JSON token data.
+          debugAuth("login response was not valid token JSON");
+          setErrorMessage("Sign-in response was not valid token data.");
+          return;
         }
 
         const resolvedName =
@@ -339,7 +437,7 @@ export default function LoginScreen(): React.ReactElement {
               SAVED_LOGIN_KEY,
               JSON.stringify({
                 email: trimmedEmail,
-                password,
+                name: resolvedName,
                 rememberMe: true,
               }),
             );
@@ -506,13 +604,14 @@ export default function LoginScreen(): React.ReactElement {
 
     try {
       await clearAuthCredential();
+      await clearGuestSession();
 
       if (rememberMe) {
         await AsyncStorage.setItem(
           SAVED_LOGIN_KEY,
           JSON.stringify({
             email: trimmedEmail,
-            password,
+            name: trimmedName,
             rememberMe: true,
           }),
         );
@@ -572,6 +671,7 @@ export default function LoginScreen(): React.ReactElement {
       await clearAuthCredential();
       await clearCurrentEmail();
       await clearCurrentName();
+      await setGuestSession();
     } catch {
       // Continue guest flow even if local cleanup fails.
     }

@@ -18,6 +18,7 @@ import {
   clearAuthCredential,
   clearCurrentEmail,
   clearCurrentName,
+  clearGuestSession,
   getCurrentUserProfile,
   syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
@@ -26,6 +27,7 @@ import {
   getQuickMatchIdentity,
   joinQuickMatch,
   leaveQuickMatch,
+  QUICK_MATCH_MAX_PLAYERS,
   startQuickMatchGame,
   type QuickMatchIdentity,
   type QuickMatchSession,
@@ -172,6 +174,7 @@ export default function LobbyScreen(): React.ReactElement {
       await clearAuthCredential();
       await clearCurrentEmail();
       await clearCurrentName();
+      await clearGuestSession();
     } catch {
       // Continue sign-out flow even if storage removal fails.
     }
@@ -342,10 +345,11 @@ export default function LobbyScreen(): React.ReactElement {
   ]);
 
   const quickMatchPlayerCount = quickMatchSession?.players.length ?? 0;
-  const quickMatchMaxPlayers = quickMatchSession?.maxPlayers ?? 3;
+  const quickMatchMaxPlayers =
+    quickMatchSession?.maxPlayers ?? QUICK_MATCH_MAX_PLAYERS;
   const quickMatchReady =
     quickMatchSession?.status === "READY" ||
-    quickMatchPlayerCount >= quickMatchMaxPlayers;
+    quickMatchPlayerCount === quickMatchMaxPlayers;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -406,15 +410,13 @@ export default function LobbyScreen(): React.ReactElement {
 
           <View style={styles.profileStatsGrid}>
             <View style={styles.statItem}>
-              <Text3D style={styles.statLabel}>Win Ratio</Text3D>
+              <Text3D style={styles.statLabel}>Win Percentage</Text3D>
               <Text3D style={styles.statValue}>{winRatioDisplay}</Text3D>
             </View>
 
             <View style={styles.statItem}>
-              <Text3D style={styles.statLabel}>Games</Text3D>
-              <Text3D style={styles.statValue}>
-                {playerProfile.gamesPlayed}
-              </Text3D>
+              <Text3D style={styles.statLabel}>Games Won</Text3D>
+              <Text3D style={styles.statValue}>{playerProfile.wins}</Text3D>
             </View>
 
             <View style={styles.statItem}>

@@ -43,6 +43,7 @@ type UserProfileMap = Record<string, UserProfile>;
 const CURRENT_USER_KEY = "@auth/currentUser";
 const CURRENT_EMAIL_KEY = "@auth/currentEmail";
 const CURRENT_AUTH_CREDENTIAL_KEY = "@auth/currentAuthCredential";
+const GUEST_SESSION_KEY = "@auth/guestSession";
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
 const TEST_PROFILE_NAME = "test";
@@ -178,10 +179,30 @@ export const setAuthCredential = async (
       refreshTokenExpiresAt: credential.refreshTokenExpiresAt ?? null,
     }),
   );
+  await AsyncStorage.removeItem(GUEST_SESSION_KEY);
 };
 
 export const clearAuthCredential = async (): Promise<void> => {
   await AsyncStorage.removeItem(CURRENT_AUTH_CREDENTIAL_KEY);
+};
+
+export const setGuestSession = async (): Promise<void> => {
+  await AsyncStorage.setItem(GUEST_SESSION_KEY, "true");
+};
+
+export const clearGuestSession = async (): Promise<void> => {
+  await AsyncStorage.removeItem(GUEST_SESSION_KEY);
+};
+
+export const isGuestSession = async (): Promise<boolean> => {
+  return (await AsyncStorage.getItem(GUEST_SESSION_KEY)) === "true";
+};
+
+export const isAuthenticatedSession = async (): Promise<boolean> => {
+  const credential = await getAuthCredential();
+  if (credential?.token) return true;
+
+  return isGuestSession();
 };
 
 export const getAuthCredential = async (): Promise<AuthCredential | null> => {
@@ -431,7 +452,7 @@ const refreshAccessTokenFromBackend = async (): Promise<boolean> => {
   }
 };
 
-const fetchWithAuth = async (
+export const fetchWithAuth = async (
   url: string,
   init?: RequestInit,
 ): Promise<Response> => {

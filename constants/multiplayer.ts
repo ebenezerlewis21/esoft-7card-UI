@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import {
+  fetchWithAuth,
   getCurrentEmail,
   getCurrentUserProfile,
   type UserProfile,
@@ -50,6 +51,8 @@ export type QuickMatchIdentity = {
   playerId: string;
   playerName: string;
 };
+
+export const QUICK_MATCH_MAX_PLAYERS = 3;
 
 export type QuickMatchAction =
   | { action: "DRAW_DECK" }
@@ -159,10 +162,7 @@ const parseQuickMatchSession = (payload: unknown): QuickMatchSession | null => {
     value.status === "READY" || value.status === "IN_PROGRESS"
       ? value.status
       : "WAITING";
-  const maxPlayers =
-    typeof value.maxPlayers === "number" && Number.isFinite(value.maxPlayers)
-      ? Math.max(1, Math.floor(value.maxPlayers))
-      : 3;
+  const maxPlayers = QUICK_MATCH_MAX_PLAYERS;
 
   const players = Array.isArray(value.players)
     ? value.players
@@ -275,16 +275,21 @@ const parseQuickMatchGame = (payload: unknown): QuickMatchGame | null => {
 export const joinQuickMatch = async (
   identity?: QuickMatchIdentity,
 ): Promise<QuickMatchSession | null> => {
-    const apiUrl = resolveApiUrl("api/matchmaking/quick");
+    const apiUrl = resolveApiUrl(
+      `api/matchmaking/quick?maxPlayers=${QUICK_MATCH_MAX_PLAYERS}`,
+    );
     if (!apiUrl) return null;
 
     const resolvedIdentity = identity ?? (await getQuickMatchIdentity());
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithAuth(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(resolvedIdentity),
+      body: JSON.stringify({
+        ...resolvedIdentity,
+        maxPlayers: QUICK_MATCH_MAX_PLAYERS,
+      }),
     });
 
     if (!response.ok) {
@@ -301,7 +306,7 @@ export const getQuickMatch =
     );
     if (!apiUrl) return null;
 
-    const response = await fetch(apiUrl);
+    const response = await fetchWithAuth(apiUrl);
     if (!response.ok) {
       return null;
     }
@@ -318,7 +323,7 @@ export const startQuickMatchGame = async (
   );
   if (!apiUrl) return null;
 
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithAuth(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -342,7 +347,7 @@ export const sendQuickMatchAction = async (
   );
   if (!apiUrl) return null;
 
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithAuth(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -370,7 +375,7 @@ export const leaveQuickMatch = async (
   );
   if (!apiUrl) return;
 
-  await fetch(apiUrl, {
+  await fetchWithAuth(apiUrl, {
     method: "DELETE",
   });
 };
