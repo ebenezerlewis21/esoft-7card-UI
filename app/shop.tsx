@@ -5,6 +5,7 @@ import React from "react";
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,9 +26,12 @@ import {
   equipCurrentUserShopItemFromBackend,
   getCurrentUserProfile,
   getCurrentUserShopInventoryFromBackend,
+  getCreditPacksFromBackend,
   getShopCatalogFromBackend,
   purchaseCurrentUserShopItemFromBackend,
+  startCreditPackPurchaseFromBackend,
   syncCurrentUserProfileFromBackend,
+  type CreditPack,
   type ShopCatalogItem,
   type ShopItemType,
 } from "../constants/auth";
@@ -241,6 +245,12 @@ export default function ShopScreen(): React.ReactElement {
   const router = useRouter();
   const [coins, setCoins] = React.useState(0);
   const [catalogItems, setCatalogItems] = React.useState<ShopCatalogItem[]>([]);
+  const [creditPacks, setCreditPacks] = React.useState<CreditPack[]>([]);
+  const [creditPurchaseMessage, setCreditPurchaseMessage] = React.useState<
+    string | null
+  >(null);
+  const [selectedCreditPack, setSelectedCreditPack] =
+    React.useState<CreditPack | null>(null);
   const [ownedSkus, setOwnedSkus] = React.useState<Set<string>>(new Set());
   const [equippedByType, setEquippedByType] = React.useState<EquippedByType>(
     {},
@@ -304,15 +314,20 @@ export default function ShopScreen(): React.ReactElement {
         setCoins(synced.coins);
       }
 
-      const [catalog, inventory] = await Promise.all([
+      const [catalog, inventory, packs] = await Promise.all([
         getShopCatalogFromBackend(),
         getCurrentUserShopInventoryFromBackend(),
+        getCreditPacksFromBackend(),
       ]);
 
       if (cancelled) return;
 
       if (catalog) {
         setCatalogItems(catalog);
+      }
+
+      if (packs) {
+        setCreditPacks(packs);
       }
 
       if (inventory) {
@@ -434,6 +449,22 @@ export default function ShopScreen(): React.ReactElement {
     }
   };
 
+  const buyCreditPack = async (pack: CreditPack): Promise<void> => {
+    setCreditPurchaseMessage(null);
+    const result = await startCreditPackPurchaseFromBackend(pack.sku);
+    setCreditPurchaseMessage(result.message);
+  };
+
+  const openCreditPurchase = (pack: CreditPack): void => {
+    setSelectedCreditPack(pack);
+    setCreditPurchaseMessage(null);
+  };
+
+  const closeCreditPurchase = (): void => {
+    setSelectedCreditPack(null);
+    setCreditPurchaseMessage(null);
+  };
+
   const equipItem = async (item: ShopRenderableItem): Promise<void> => {
     const equipped = await equipCurrentUserShopItemFromBackend(item.base.sku);
     if (!equipped) return;
@@ -512,6 +543,76 @@ export default function ShopScreen(): React.ReactElement {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
+        <Text3D style={styles.sectionTitle}>Buy Credits</Text3D>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          snapToInterval={246}
+        >
+          {creditPacks.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text3D style={styles.emptyText}>
+                No credit packs from server.
+              </Text3D>
+            </View>
+          ) : null}
+          {creditPacks.map((pack) => (
+            <View key={pack.sku} style={styles.card}>
+              <View style={[styles.preview, styles.creditPreview]}>
+                <View style={styles.previewGlow} />
+                <View style={styles.previewBadge}>
+                  <MaterialCommunityIcons
+                    name="cash-plus"
+                    size={18}
+                    color="#8ef0ae"
+                  />
+                  <Text3D
+                    style={[styles.previewBadgeText, { color: "#8ef0ae" }]}
+                  >
+                    Credits
+                  </Text3D>
+                </View>
+
+                <Text3D style={styles.creditAmountText}>
+                  {new Intl.NumberFormat("en-US", {
+                    maximumFractionDigits: 0,
+                  }).format(pack.credits)}
+                </Text3D>
+              </View>
+
+              <View style={styles.cardBody}>
+                <View style={styles.cardTitleRow}>
+                  <Text3D style={styles.cardTitle}>{pack.name}</Text3D>
+                </View>
+
+                <Text3D style={styles.themeDescription}>
+                  Add credits to buy gameboards, cards, icons, and themes.
+                </Text3D>
+
+                <Pressable
+                  onPress={() => {
+                    openCreditPurchase(pack);
+                  }}
+                  style={({ pressed }) => [
+                    styles.buyButton,
+                    pressed && styles.pressedButton,
+                  ]}
+                >
+                  <Text3D style={styles.buyButtonText}>
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "USD",
+                    }).format(pack.priceUsd)}
+                  </Text3D>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
         <Text3D style={styles.sectionTitle}>Game Themes</Text3D>
         <ScrollView
           horizontal
@@ -985,6 +1086,72 @@ export default function ShopScreen(): React.ReactElement {
           })}
         </ScrollView>
       </ScrollView>
+
+      <Modal
+        visible={selectedCreditPack !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCreditPurchase}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: appTheme.colors.settingsBackground },
+            ]}
+          >
+            <Text3D style={styles.modalTitle}>Buy Credits</Text3D>
+
+            {selectedCreditPack ? (
+              <>
+                <Text3D style={styles.creditModalAmount}>
+                  {new Intl.NumberFormat("en-US", {
+                    maximumFractionDigits: 0,
+                  }).format(selectedCreditPack.credits)}{" "}
+                  Credits
+                </Text3D>
+                <Text3D style={styles.creditModalPrice}>
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                  }).format(selectedCreditPack.priceUsd)}
+                </Text3D>
+              </>
+            ) : null}
+
+            <Text3D style={styles.modalHint}>
+              Real-money credit purchases use App Store or Google Play in-app
+              purchases.
+            </Text3D>
+
+            <View style={styles.modalNoticeSlot}>
+              {creditPurchaseMessage ? (
+                <Text3D style={styles.modalNotice}>
+                  {creditPurchaseMessage}
+                </Text3D>
+              ) : null}
+            </View>
+
+            <Pressable
+              style={styles.buyButton}
+              onPress={() => {
+                if (selectedCreditPack) {
+                  void buyCreditPack(selectedCreditPack);
+                }
+              }}
+            >
+              <Text3D style={styles.buyButtonText}>Continue</Text3D>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalCancelButton}
+              onPress={closeCreditPurchase}
+            >
+              <Text3D style={styles.modalCancelText}>Close</Text3D>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1097,6 +1264,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.3,
   },
+  creditPreview: {
+    backgroundColor: "#184c32",
+    justifyContent: "space-between",
+  },
+  creditAmountText: {
+    color: "#8ef0ae",
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: 10,
+  },
   themePreview: {
     justifyContent: "space-between",
   },
@@ -1164,6 +1343,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     minHeight: 34,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    gap: 10,
+  },
+  modalTitle: {
+    color: "#f6d43a",
+    fontSize: 22,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  creditModalAmount: {
+    color: "#8ef0ae",
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  creditModalPrice: {
+    color: "#fdf0b4",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  modalHint: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: "center",
+  },
+  modalNotice: {
+    color: "#fdf0b4",
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: "center",
+  },
+  modalNoticeSlot: {
+    minHeight: 52,
+    justifyContent: "center",
+  },
+  modalCancelButton: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    paddingVertical: 9,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 13,
   },
   statusText: {
     color: "rgba(255,255,255,0.78)",

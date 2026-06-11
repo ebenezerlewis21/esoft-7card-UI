@@ -42,6 +42,15 @@ export type UserShopItem = {
   properties?: Record<string, unknown>;
 };
 
+export type CreditPack = {
+  id: number;
+  sku: string;
+  name: string;
+  credits: number;
+  priceUsd: number;
+  storeProductId: string;
+};
+
 type UserProfileMap = Record<string, UserProfile>;
 
 const CURRENT_USER_KEY = "@auth/currentUser";
@@ -720,6 +729,23 @@ export const getShopCatalogFromBackend = async (): Promise<
   }
 };
 
+export const getCreditPacksFromBackend = async (): Promise<
+  CreditPack[] | null
+> => {
+  const apiUrl = resolveApiUrl("api/shop/credit-packs");
+  if (!apiUrl) return null;
+
+  try {
+    const response = await fetchWithAuth(apiUrl);
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as CreditPack[];
+    return Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
 export const getCurrentUserShopInventoryFromBackend = async (): Promise<
   UserShopItem[] | null
 > => {
@@ -773,6 +799,59 @@ export const purchaseCurrentUserShopItemFromBackend = async (
     return nextProfile?.coins ?? null;
   } catch {
     return null;
+  }
+};
+
+export const startCreditPackPurchaseFromBackend = async (
+  sku: string,
+): Promise<{ ok: boolean; message: string }> => {
+  const apiUrl = resolveApiUrl("api/shop/credit-packs/purchase");
+  const email = await getCurrentEmail();
+  const normalizedSku = sku.trim();
+  if (!apiUrl || !email || !normalizedSku) {
+    return {
+      ok: false,
+      message: "Unable to start credit purchase right now.",
+    };
+  }
+
+  try {
+    const response = await fetchWithAuth(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        sku: normalizedSku,
+        platform: Platform.OS,
+      }),
+    });
+
+    if (response.ok) {
+      return {
+        ok: true,
+        message: "Credit purchase started.",
+      };
+    }
+
+    if (response.status === 501) {
+      return {
+        ok: false,
+        message:
+          "Credit purchases require in-app purchase setup before real money can be accepted.",
+      };
+    }
+
+    return {
+      ok: false,
+      message: "Unable to start credit purchase right now.",
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "Unable to reach the credit purchase server.",
+    };
   }
 };
 
