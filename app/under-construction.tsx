@@ -4,9 +4,22 @@ import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
+import {
+  appThemeFromShopItem,
+  getActiveAppTheme,
+  initializeAppThemeSettings,
+  setActiveAppTheme,
+  subscribeAppThemeSettings,
+} from "../constants/appThemes";
+import { getCurrentUserShopInventoryFromBackend } from "../constants/auth";
+import { Feature } from "../constants/features";
 
 export default function UnderConstructionScreen(): React.ReactElement {
   const router = useRouter();
+  const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
+  const title = Feature.aiModeOnly.enabled
+    ? "Coming Soon"
+    : "Under Construction";
 
   const handleGoBack = React.useCallback(() => {
     if (router.canGoBack()) {
@@ -18,19 +31,48 @@ export default function UnderConstructionScreen(): React.ReactElement {
   }, [router]);
 
   React.useEffect(() => {
+    const unsubscribeAppTheme = subscribeAppThemeSettings(() => {
+      setAppTheme(getActiveAppTheme());
+    });
+
+    void initializeAppThemeSettings();
+
+    void (async () => {
+      const inventory = await getCurrentUserShopInventoryFromBackend();
+      const equippedTheme = inventory?.find(
+        (item) => item.type === "GAME_THEME" && item.equipped,
+      );
+      const theme = equippedTheme ? appThemeFromShopItem(equippedTheme) : null;
+      if (theme) {
+        setActiveAppTheme(theme);
+        setAppTheme(theme);
+      }
+    })();
+
     void ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.PORTRAIT_UP,
     );
 
     return () => {
+      unsubscribeAppTheme();
       void ScreenOrientation.unlockAsync();
     };
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.panel}>
-        <Text3D style={styles.title}>Under Construction</Text3D>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: appTheme.colors.screenBackground },
+      ]}
+    >
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: appTheme.colors.panelBackground },
+        ]}
+      >
+        <Text3D style={styles.title}>{title}</Text3D>
         <Text3D style={styles.subtitle}>This game mode is coming soon.</Text3D>
 
         <TouchableOpacity

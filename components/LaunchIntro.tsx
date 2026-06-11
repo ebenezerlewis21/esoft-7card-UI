@@ -13,6 +13,16 @@ type LaunchIntroProps = {
   onFinish: () => void;
 };
 
+const INTRO_TOTAL_DURATION_MS = 5000;
+const LOGO_IN_DURATION_MS = 340;
+const CARD_REVEAL_DURATION_MS = 880;
+const FADE_OUT_DURATION_MS = 420;
+const INTRO_HOLD_DURATION_MS =
+  INTRO_TOTAL_DURATION_MS -
+  LOGO_IN_DURATION_MS -
+  CARD_REVEAL_DURATION_MS -
+  FADE_OUT_DURATION_MS;
+
 export default function LaunchIntro({
   onFinish,
 }: LaunchIntroProps): React.ReactElement {
@@ -31,7 +41,7 @@ export default function LaunchIntro({
       Animated.parallel([
         Animated.timing(logoOpacity, {
           toValue: 1,
-          duration: 340,
+          duration: LOGO_IN_DURATION_MS,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -57,15 +67,15 @@ export default function LaunchIntro({
         }),
         Animated.timing(shine, {
           toValue: 1,
-          duration: 880,
+          duration: CARD_REVEAL_DURATION_MS,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
-      Animated.delay(8560),
+      Animated.delay(INTRO_HOLD_DURATION_MS),
       Animated.timing(overlayOpacity, {
         toValue: 0,
-        duration: 420,
+        duration: FADE_OUT_DURATION_MS,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),

@@ -18,7 +18,11 @@ export type AuthCredential = {
   refreshTokenExpiresAt?: string | null;
 };
 
-export type ShopItemType = "BACKGROUND" | "CARD_BACK" | "PLAYER_ICON";
+export type ShopItemType =
+  | "BACKGROUND"
+  | "CARD_BACK"
+  | "PLAYER_ICON"
+  | "GAME_THEME";
 
 export type ShopCatalogItem = {
   id: number;
@@ -61,6 +65,8 @@ const DEFAULT_TEST_PROFILE: Omit<UserProfile, "name"> = {
   rank: "Diamond",
   coins: 100,
 };
+
+let guestSessionActive = false;
 
 const isTestEnvironment = (): boolean =>
   process.env.EXPO_PUBLIC_APP_ENV === "test";
@@ -179,6 +185,7 @@ export const setAuthCredential = async (
       refreshTokenExpiresAt: credential.refreshTokenExpiresAt ?? null,
     }),
   );
+  guestSessionActive = false;
   await AsyncStorage.removeItem(GUEST_SESSION_KEY);
 };
 
@@ -188,14 +195,20 @@ export const clearAuthCredential = async (): Promise<void> => {
 
 export const setGuestSession = async (): Promise<void> => {
   await AsyncStorage.setItem(GUEST_SESSION_KEY, "true");
+  guestSessionActive = true;
 };
 
 export const clearGuestSession = async (): Promise<void> => {
+  guestSessionActive = false;
   await AsyncStorage.removeItem(GUEST_SESSION_KEY);
 };
 
 export const isGuestSession = async (): Promise<boolean> => {
-  return (await AsyncStorage.getItem(GUEST_SESSION_KEY)) === "true";
+  if (guestSessionActive) return true;
+
+  guestSessionActive =
+    (await AsyncStorage.getItem(GUEST_SESSION_KEY)) === "true";
+  return guestSessionActive;
 };
 
 export const isAuthenticatedSession = async (): Promise<boolean> => {
@@ -301,7 +314,7 @@ const writeCurrentUserProfileFromBackend = async (payload: {
   return nextProfile;
 };
 
-const resolveApiUrl = (path: string): string | null => {
+export const resolveApiUrl = (path: string): string | null => {
   const configuredBase = process.env.EXPO_PUBLIC_API_URL?.trim() ?? "";
   if (!configuredBase) return null;
 

@@ -15,13 +15,22 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  appThemeFromShopItem,
+  getActiveAppTheme,
+  initializeAppThemeSettings,
+  setActiveAppTheme,
+  subscribeAppThemeSettings,
+} from "../constants/appThemes";
+import {
   clearAuthCredential,
   clearCurrentEmail,
   clearCurrentName,
   clearGuestSession,
   getCurrentUserProfile,
+  getCurrentUserShopInventoryFromBackend,
   syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
+import { Feature } from "../constants/features";
 import {
   getQuickMatch,
   getQuickMatchIdentity,
@@ -48,7 +57,7 @@ import {
 } from "../constants/settings";
 
 const DEFAULT_PROFILE = {
-  name: "Player",
+  name: "Guest",
   wins: 0,
   gamesPlayed: 0,
   rank: "Unranked",
@@ -80,6 +89,7 @@ export default function LobbyScreen(): React.ReactElement {
     React.useState<TurnAlertMode>(getTurnAlertMode());
   const [selectedAiDifficulty, setSelectedAiDifficulty] =
     React.useState<AiDifficulty>(getAiDifficulty());
+  const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
   const winRatio = Math.round(
     (playerProfile.wins / Math.max(1, playerProfile.gamesPlayed)) * 100,
   );
@@ -87,8 +97,6 @@ export default function LobbyScreen(): React.ReactElement {
   const coinsDisplay = React.useMemo(
     () =>
       new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
         maximumFractionDigits: 0,
       }).format(playerProfile.coins),
     [playerProfile.coins],
@@ -146,6 +154,20 @@ export default function LobbyScreen(): React.ReactElement {
           coins: syncedProfile.coins,
         }));
       }
+
+      const inventory = await getCurrentUserShopInventoryFromBackend();
+      if (!cancelled && inventory) {
+        const equippedTheme = inventory.find(
+          (item) => item.type === "GAME_THEME" && item.equipped,
+        );
+        const theme = equippedTheme
+          ? appThemeFromShopItem(equippedTheme)
+          : null;
+        if (theme) {
+          setActiveAppTheme(theme);
+          setAppTheme(theme);
+        }
+      }
     };
 
     void loadCurrentProfile();
@@ -158,13 +180,19 @@ export default function LobbyScreen(): React.ReactElement {
       setTurnAlertModeState(mode);
     });
 
+    const unsubscribeAppTheme = subscribeAppThemeSettings(() => {
+      setAppTheme(getActiveAppTheme());
+    });
+
     void initializeSoundSettings();
     void initializeProfileSettings();
+    void initializeAppThemeSettings();
 
     return () => {
       cancelled = true;
       unsubscribe();
       unsubscribeTurnAlertMode();
+      unsubscribeAppTheme();
     };
   }, []);
 
@@ -272,6 +300,11 @@ export default function LobbyScreen(): React.ReactElement {
   }, [router]);
 
   const handleQuickMatchPress = React.useCallback(async () => {
+    if (Feature.aiModeOnly.enabled) {
+      router.push("/under-construction");
+      return;
+    }
+
     setQuickMatchOpen(true);
     setQuickMatchLoading(true);
     setQuickMatchError(null);
@@ -298,7 +331,7 @@ export default function LobbyScreen(): React.ReactElement {
     } finally {
       setQuickMatchLoading(false);
     }
-  }, [updateQuickMatchSession]);
+  }, [router, updateQuickMatchSession]);
 
   const handleQuickMatchCancel = React.useCallback(() => {
     const matchId = quickMatchSession?.matchId;
@@ -352,7 +385,12 @@ export default function LobbyScreen(): React.ReactElement {
     quickMatchPlayerCount === quickMatchMaxPlayers;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: appTheme.colors.screenBackground },
+      ]}
+    >
       <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -425,7 +463,7 @@ export default function LobbyScreen(): React.ReactElement {
             </View>
 
             <View style={styles.statItem}>
-              <Text3D style={styles.statLabel}>Coins</Text3D>
+              <Text3D style={styles.statLabel}>Credits</Text3D>
               <View style={styles.coinValueRow}>
                 <MaterialCommunityIcons
                   name="diamond-stone"
@@ -490,6 +528,12 @@ export default function LobbyScreen(): React.ReactElement {
                 handleRestrictedGuestAction();
                 return;
               }
+
+              if (Feature.aiModeOnly.enabled) {
+                router.push("/under-construction");
+                return;
+              }
+
               router.push("/under-construction");
             }}
           >
@@ -515,6 +559,12 @@ export default function LobbyScreen(): React.ReactElement {
                 handleRestrictedGuestAction();
                 return;
               }
+
+              if (Feature.aiModeOnly.enabled) {
+                router.push("/under-construction");
+                return;
+              }
+
               router.push("/under-construction");
             }}
           >
@@ -536,7 +586,12 @@ export default function LobbyScreen(): React.ReactElement {
         onRequestClose={() => setSettingsOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: appTheme.colors.settingsBackground },
+            ]}
+          >
             <Text3D style={styles.modalTitle}>Settings</Text3D>
 
             <View style={styles.optionRow}>
@@ -602,7 +657,12 @@ export default function LobbyScreen(): React.ReactElement {
         onRequestClose={() => setPlayModeOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: appTheme.colors.settingsBackground },
+            ]}
+          >
             <Text3D style={styles.modalTitle}>Choose AI Difficulty</Text3D>
 
             <View style={styles.aiModeSection}>

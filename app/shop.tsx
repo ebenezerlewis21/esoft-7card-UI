@@ -14,6 +14,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Text3D from "../components/Text3D";
 import {
+  appThemeFromShopItem,
+  getActiveAppTheme,
+  getActiveAppThemeId,
+  initializeAppThemeSettings,
+  setActiveAppTheme,
+  subscribeAppThemeSettings,
+} from "../constants/appThemes";
+import {
   equipCurrentUserShopItemFromBackend,
   getCurrentUserProfile,
   getCurrentUserShopInventoryFromBackend,
@@ -243,6 +251,10 @@ export default function ShopScreen(): React.ReactElement {
   const [activePlayerIconId, setActivePlayerIconIdState] = React.useState(
     getActivePlayerIconId(),
   );
+  const [activeAppThemeId, setActiveAppThemeIdState] = React.useState(
+    getActiveAppThemeId(),
+  );
+  const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
 
   const backgroundItems = React.useMemo(
     () =>
@@ -262,6 +274,13 @@ export default function ShopScreen(): React.ReactElement {
     () =>
       catalogItems
         .filter((item) => item.type === "PLAYER_ICON")
+        .map(toRenderableItem),
+    [catalogItems],
+  );
+  const themeItems = React.useMemo(
+    () =>
+      catalogItems
+        .filter((item) => item.type === "GAME_THEME")
         .map(toRenderableItem),
     [catalogItems],
   );
@@ -334,6 +353,16 @@ export default function ShopScreen(): React.ReactElement {
                 setActivePlayerIconId(playerIconId);
               }
             }
+            continue;
+          }
+
+          if (owned.type === "GAME_THEME" && owned.equipped) {
+            const theme = appThemeFromShopItem(owned);
+            if (theme) {
+              setActiveAppTheme(theme);
+              setActiveAppThemeIdState(theme.id);
+              setAppTheme(theme);
+            }
           }
         }
 
@@ -351,13 +380,21 @@ export default function ShopScreen(): React.ReactElement {
       setActivePlayerIconIdState(getActivePlayerIconId());
     });
 
+    const unsubscribeAppTheme = subscribeAppThemeSettings(() => {
+      setActiveAppThemeIdState(getActiveAppThemeId());
+      setAppTheme(getActiveAppTheme());
+    });
+
     void ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.PORTRAIT_UP,
     );
 
+    void initializeAppThemeSettings();
+
     return () => {
       cancelled = true;
       unsubscribePlayerIcons();
+      unsubscribeAppTheme();
       void ScreenOrientation.unlockAsync();
     };
   }, [router]);
@@ -423,11 +460,26 @@ export default function ShopScreen(): React.ReactElement {
     const playerIconId = toPlayerIconId(item.uiId);
     if (playerIconId) {
       setActivePlayerIconId(playerIconId);
+      return;
+    }
+
+    if (item.base.type === "GAME_THEME") {
+      const theme = appThemeFromShopItem(item.base);
+      if (theme) {
+        setActiveAppTheme(theme);
+        setActiveAppThemeIdState(theme.id);
+        setAppTheme(theme);
+      }
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: appTheme.colors.screenBackground },
+      ]}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -450,8 +502,6 @@ export default function ShopScreen(): React.ReactElement {
           />
           <Text3D style={styles.coinText}>
             {new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency: "USD",
               maximumFractionDigits: 0,
             }).format(coins)}
           </Text3D>
@@ -462,6 +512,145 @@ export default function ShopScreen(): React.ReactElement {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
+        <Text3D style={styles.sectionTitle}>Game Themes</Text3D>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          snapToInterval={246}
+        >
+          {themeItems.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text3D style={styles.emptyText}>
+                No game themes from server.
+              </Text3D>
+            </View>
+          ) : null}
+          {themeItems.map((item) => {
+            const theme = appThemeFromShopItem(item.base);
+            if (!theme) return null;
+
+            const owned = ownedSkus.has(item.base.sku);
+            const active =
+              equippedByType.GAME_THEME === item.base.sku ||
+              activeAppThemeId === theme.id;
+            const itemCost = Math.max(0, Math.floor(item.base.price));
+            const canBuy = coins >= itemCost && !owned;
+            const canEquip = owned && !active;
+            const canInteract = canBuy || canEquip;
+
+            return (
+              <View key={item.base.sku} style={styles.card}>
+                <View
+                  style={[
+                    styles.preview,
+                    styles.themePreview,
+                    { backgroundColor: theme.colors.previewBackground },
+                  ]}
+                >
+                  <View style={styles.previewGlow} />
+                  <View style={styles.previewBadge}>
+                    <MaterialCommunityIcons
+                      name={theme.icon}
+                      size={18}
+                      color={theme.accent}
+                    />
+                    <Text3D
+                      style={[styles.previewBadgeText, { color: theme.accent }]}
+                    >
+                      Theme
+                    </Text3D>
+                  </View>
+
+                  <View style={styles.themeSwatchRow}>
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.screenBackground },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.settingsBackground },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.accent },
+                      ]}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTitleRow}>
+                    <Text3D style={styles.cardTitle}>{theme.name}</Text3D>
+                    {active ? (
+                      <View style={styles.activeChip}>
+                        <Text3D style={styles.activeChipText}>Active</Text3D>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <Text3D style={styles.themeDescription}>
+                    {theme.description}
+                  </Text3D>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.costRow}>
+                      <MaterialCommunityIcons
+                        name="diamond-stone"
+                        size={14}
+                        color="#f6d43a"
+                      />
+                      <Text3D style={styles.costText}>
+                        {new Intl.NumberFormat("en-US", {
+                          maximumFractionDigits: 0,
+                        }).format(itemCost)}
+                      </Text3D>
+                    </View>
+
+                    <Text3D style={styles.statusText}>
+                      {owned
+                        ? "Owned"
+                        : canBuy
+                          ? "Available"
+                          : "Need more coins"}
+                    </Text3D>
+                  </View>
+
+                  <Pressable
+                    onPress={() => {
+                      if (canEquip) {
+                        void equipItem(item);
+                        return;
+                      }
+
+                      void buyItem(item);
+                    }}
+                    disabled={!canInteract}
+                    style={({ pressed }) => [
+                      styles.buyButton,
+                      active && styles.ownedButton,
+                      canEquip && styles.equipButton,
+                      !canInteract && styles.disabledButton,
+                      pressed && canInteract && styles.pressedButton,
+                    ]}
+                  >
+                    <Text3D style={styles.buyButtonText}>
+                      {active ? "Active" : canEquip ? "Apply Theme" : "Buy Theme"}
+                    </Text3D>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+
         <Text3D style={styles.sectionTitle}>Gameboards</Text3D>
         <ScrollView
           horizontal
@@ -528,8 +717,6 @@ export default function ShopScreen(): React.ReactElement {
                       />
                       <Text3D style={styles.costText}>
                         {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
                           maximumFractionDigits: 0,
                         }).format(itemCost)}
                       </Text3D>
@@ -638,8 +825,6 @@ export default function ShopScreen(): React.ReactElement {
                       />
                       <Text3D style={styles.costText}>
                         {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
                           maximumFractionDigits: 0,
                         }).format(itemCost)}
                       </Text3D>
@@ -758,8 +943,6 @@ export default function ShopScreen(): React.ReactElement {
                       />
                       <Text3D style={styles.costText}>
                         {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
                           maximumFractionDigits: 0,
                         }).format(itemCost)}
                       </Text3D>
@@ -914,6 +1097,22 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.3,
   },
+  themePreview: {
+    justifyContent: "space-between",
+  },
+  themeSwatchRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignSelf: "center",
+    marginBottom: 8,
+  },
+  themeSwatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.38)",
+  },
   cardBody: {
     padding: 11,
     gap: 8,
@@ -959,6 +1158,12 @@ const styles = StyleSheet.create({
     color: "#ffe89a",
     fontSize: 13,
     fontWeight: "800",
+  },
+  themeDescription: {
+    color: "rgba(255,255,255,0.76)",
+    fontSize: 12,
+    lineHeight: 17,
+    minHeight: 34,
   },
   statusText: {
     color: "rgba(255,255,255,0.78)",

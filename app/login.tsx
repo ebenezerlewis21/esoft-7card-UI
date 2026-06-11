@@ -22,6 +22,8 @@ import {
   clearCurrentName,
   clearGuestSession,
   ensureUserProfile,
+  isGuestSession,
+  resolveApiUrl,
   setAuthCredential,
   setCurrentEmail,
   setCurrentName,
@@ -165,7 +167,6 @@ export default function LoginScreen(): React.ReactElement {
   const isBackendAuthEnvironment =
     appEnv === "local" || appEnv === "production";
   const backendEnvLabel = appEnv === "production" ? "production" : "local";
-  const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
   const devLoginPath =
     process.env.EXPO_PUBLIC_DEV_LOGIN_PATH ?? "api/auth/login";
   const devSignupPath =
@@ -330,14 +331,15 @@ export default function LoginScreen(): React.ReactElement {
     }
 
     if (isBackendAuthEnvironment && authMode === "signin") {
-      if (!apiBaseUrl) {
+      const loginUrl = resolveApiUrl(devLoginPath);
+
+      if (!loginUrl) {
         setErrorMessage(
           `API base URL is not configured for ${backendEnvLabel} login.`,
         );
         return;
       }
 
-      const loginUrl = `${apiBaseUrl.replace(/\/+$/, "")}/${devLoginPath.replace(/^\/+/, "")}`;
       debugAuth("calling dev login endpoint", {
         loginUrl,
         email: trimmedEmail,
@@ -474,14 +476,15 @@ export default function LoginScreen(): React.ReactElement {
     }
 
     if (isBackendAuthEnvironment && authMode === "signup") {
-      if (!apiBaseUrl) {
+      const signupUrl = resolveApiUrl(devSignupPath);
+
+      if (!signupUrl) {
         setErrorMessage(
           `API base URL is not configured for ${backendEnvLabel} signup.`,
         );
         return;
       }
 
-      const signupUrl = `${apiBaseUrl.replace(/\/+$/, "")}/${devSignupPath.replace(/^\/+/, "")}`;
       debugAuth("calling dev signup endpoint", {
         signupUrl,
         name: trimmedName,
@@ -653,7 +656,6 @@ export default function LoginScreen(): React.ReactElement {
     router.replace(destination);
   }, [
     authMode,
-    apiBaseUrl,
     confirmPassword,
     devLoginPath,
     devSignupPath,
@@ -676,12 +678,25 @@ export default function LoginScreen(): React.ReactElement {
       await clearAuthCredential();
       await clearCurrentEmail();
       await clearCurrentName();
-      await setGuestSession();
     } catch {
       // Continue guest flow even if local cleanup fails.
     }
 
-    router.replace(destination);
+    try {
+      await setGuestSession();
+      const guestSessionStarted = await isGuestSession();
+      if (!guestSessionStarted) {
+        setErrorMessage("Unable to start guest session.");
+        return;
+      }
+    } catch {
+      setErrorMessage("Unable to start guest session.");
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      router.replace(destination);
+    });
   }, [destination, router]);
 
   const handleSubmitPress = React.useCallback(async () => {
