@@ -8,7 +8,15 @@ export type AppTheme = {
   name: string;
   description: string;
   accent: string;
-  icon: "cards-playing-outline" | "weather-night" | "weather-sunset" | "palette-outline";
+  icon:
+    | "cards-playing-outline"
+    | "weather-night"
+    | "weather-sunset"
+    | "palette-outline"
+    | "cube-outline"
+    | "cube-scan"
+    | "crystal-ball";
+  graphic: "none" | "cubes" | "crystal" | "arcade";
   colors: {
     screenBackground: string;
     panelBackground: string;
@@ -25,6 +33,7 @@ export const DEFAULT_APP_THEME: AppTheme = {
   description: "Felt green and gold.",
   accent: "#f6d43a",
   icon: "cards-playing-outline",
+  graphic: "none",
   colors: {
     screenBackground: "#1a5c2e",
     panelBackground: "rgba(0,0,0,0.28)",
@@ -52,12 +61,25 @@ const toThemeIcon = (
     value === "cards-playing-outline" ||
     value === "weather-night" ||
     value === "weather-sunset" ||
-    value === "palette-outline"
+    value === "palette-outline" ||
+    value === "cube-outline" ||
+    value === "cube-scan" ||
+    value === "crystal-ball"
   ) {
     return value;
   }
 
   return "palette-outline";
+};
+
+const toThemeGraphic = (
+  value: string | null,
+): AppTheme["graphic"] => {
+  if (value === "cubes" || value === "crystal" || value === "arcade") {
+    return value;
+  }
+
+  return "none";
 };
 
 export const appThemeFromShopItem = (
@@ -76,6 +98,7 @@ export const appThemeFromShopItem = (
       "Theme for lobby and shop screens.",
     accent: stringProperty(item.properties, "accent") ?? DEFAULT_APP_THEME.accent,
     icon: toThemeIcon(stringProperty(item.properties, "icon")),
+    graphic: toThemeGraphic(stringProperty(item.properties, "graphic")),
     colors: {
       screenBackground:
         stringProperty(item.properties, "screenBackground") ??
@@ -118,6 +141,7 @@ const normalizeStoredTheme = (value: unknown): AppTheme | null => {
     description: candidate.description,
     accent: candidate.accent,
     icon: toThemeIcon(candidate.icon ?? null),
+    graphic: toThemeGraphic(candidate.graphic ?? null),
     colors: {
       screenBackground: colors.screenBackground,
       panelBackground: colors.panelBackground,

@@ -3,6 +3,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppThemeBackdrop from "../components/AppThemeBackdrop";
 import Text3D from "../components/Text3D";
 import {
   appThemeFromShopItem,
@@ -66,6 +67,7 @@ export default function UnderConstructionScreen(): React.ReactElement {
         { backgroundColor: appTheme.colors.screenBackground },
       ]}
     >
+      <AppThemeBackdrop theme={appTheme} />
       <View
         style={[
           styles.panel,

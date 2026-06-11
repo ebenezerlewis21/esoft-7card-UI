@@ -4,6 +4,8 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppThemeBackdrop from "../components/AppThemeBackdrop";
+import RankIcon from "../components/RankIcon";
 import Text3D from "../components/Text3D";
 import {
   appThemeFromShopItem,
@@ -54,6 +56,7 @@ export default function InfoScreen(): React.ReactElement {
         { backgroundColor: appTheme.colors.screenBackground },
       ]}
     >
+      <AppThemeBackdrop theme={appTheme} />
       <View
         style={[
           styles.panel,
@@ -111,8 +114,14 @@ export default function InfoScreen(): React.ReactElement {
           <Text3D style={styles.bodyText}>
             Ranked: Your current competitive tier.
           </Text3D>
+          <View style={styles.rankIconRow}>
+            {["Unranked", "Bronze", "Silver", "Gold", "Diamond", "Platinum"].map(
+              (rank) => (
+                <RankIcon key={rank} rank={rank} size={22} />
+              ),
+            )}
+          </View>
           <Text3D style={styles.bodyText}>
-            Ranks start at Bronze, then Silver, Gold, Diamond, and Platinum.
             Each tier holds 100 players. If a tier is full and you move up, you
             replace the lowest-ranked player in that tier and they move down.
           </Text3D>
@@ -192,6 +201,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  rankIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 2,
   },
   button: {
     marginTop: 16,

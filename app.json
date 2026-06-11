@@ -8,14 +8,23 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.esoft.sevencardrummy.dev",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {},
-    "plugins": ["expo-router", "expo-audio"],
+    "plugins": [
+      "expo-router",
+      "expo-audio",
+      "expo-asset",
+      "expo-iap"
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

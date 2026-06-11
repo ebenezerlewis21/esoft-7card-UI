@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppThemeBackdrop from "../components/AppThemeBackdrop";
 import Text3D from "../components/Text3D";
 import {
   appThemeFromShopItem,
@@ -511,6 +512,7 @@ export default function ShopScreen(): React.ReactElement {
         { backgroundColor: appTheme.colors.screenBackground },
       ]}
     >
+      <AppThemeBackdrop theme={appTheme} />
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -651,6 +653,7 @@ export default function ShopScreen(): React.ReactElement {
                     { backgroundColor: theme.colors.previewBackground },
                   ]}
                 >
+                  <AppThemeBackdrop theme={theme} preview />
                   <View style={styles.previewGlow} />
                   <View style={styles.previewBadge}>
                     <MaterialCommunityIcons

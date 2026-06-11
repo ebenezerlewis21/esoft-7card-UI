@@ -13,6 +13,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppThemeBackdrop from "../components/AppThemeBackdrop";
+import RankIcon from "../components/RankIcon";
 import Text3D from "../components/Text3D";
 import {
   appThemeFromShopItem,
@@ -391,6 +393,7 @@ export default function LobbyScreen(): React.ReactElement {
         { backgroundColor: appTheme.colors.screenBackground },
       ]}
     >
+      <AppThemeBackdrop theme={appTheme} />
       <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -459,7 +462,7 @@ export default function LobbyScreen(): React.ReactElement {
 
             <View style={styles.statItem}>
               <Text3D style={styles.statLabel}>Ranked</Text3D>
-              <Text3D style={styles.statValue}>{playerProfile.rank}</Text3D>
+              <RankIcon rank={playerProfile.rank} size={24} />
             </View>
 
             <View style={styles.statItem}>
