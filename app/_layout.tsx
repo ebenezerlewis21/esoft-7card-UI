@@ -85,7 +85,10 @@ export default function RootLayout(): React.ReactElement {
           <Slot />
         )}
         {showOverlay ? (
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.overlay, { opacity: overlayOpacity }]}
+          >
             <ActivityIndicator size="large" color="#ffffff" />
           </Animated.View>
         ) : null}

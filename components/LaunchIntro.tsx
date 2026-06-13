@@ -126,7 +126,7 @@ export default function LaunchIntro({
 
   return (
     <Animated.View
-      pointerEvents="auto"
+      pointerEvents="none"
       style={[styles.overlay, { opacity: overlayOpacity }]}
     >
       <View pointerEvents="none" style={styles.backdrop}>

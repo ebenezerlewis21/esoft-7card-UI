@@ -24,14 +24,18 @@ import {
   subscribeAppThemeSettings,
 } from "../constants/appThemes";
 import {
+  awardCurrentUserCredits,
+  awardGuestCredits,
   clearAuthCredential,
   clearCurrentEmail,
   clearCurrentName,
   clearGuestSession,
   getCurrentUserProfile,
   getCurrentUserShopInventoryFromBackend,
+  getGuestCredits,
   syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
+import { useRewardedAd } from "../components/useRewardedAd";
 import { Feature } from "../constants/features";
 import {
   getQuickMatch,
@@ -73,6 +77,8 @@ export default function LobbyScreen(): React.ReactElement {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [playModeOpen, setPlayModeOpen] = React.useState(false);
   const [guestPromptOpen, setGuestPromptOpen] = React.useState(false);
+  const [lowCreditsPromptOpen, setLowCreditsPromptOpen] =
+    React.useState(false);
   const [quickMatchOpen, setQuickMatchOpen] = React.useState(false);
   const [quickMatchLoading, setQuickMatchLoading] = React.useState(false);
   const [quickMatchError, setQuickMatchError] = React.useState<string | null>(
@@ -92,6 +98,9 @@ export default function LobbyScreen(): React.ReactElement {
   const [selectedAiDifficulty, setSelectedAiDifficulty] =
     React.useState<AiDifficulty>(getAiDifficulty());
   const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
+  const { rewardedReady, showRewardedAd } = useRewardedAd();
+  const [rewardStatus, setRewardStatus] = React.useState<string | null>(null);
+  const REWARD_CREDIT_AMOUNT = 0.25;
   const winRatio = Math.round(
     (playerProfile.wins / Math.max(1, playerProfile.gamesPlayed)) * 100,
   );
@@ -99,7 +108,9 @@ export default function LobbyScreen(): React.ReactElement {
   const coinsDisplay = React.useMemo(
     () =>
       new Intl.NumberFormat("en-US", {
-        maximumFractionDigits: 0,
+        // Show up to 2 decimals so fractional rewards (e.g. +0.25) are visible,
+        // while whole balances still render without a trailing ".00".
+        maximumFractionDigits: 2,
       }).format(playerProfile.coins),
     [playerProfile.coins],
   );
@@ -130,6 +141,10 @@ export default function LobbyScreen(): React.ReactElement {
       if (!profile || cancelled) {
         if (!cancelled) {
           setIsGuest(true);
+          const guestCredits = await getGuestCredits();
+          if (!cancelled) {
+            setPlayerProfile((prev) => ({ ...prev, coins: guestCredits }));
+          }
         }
         return;
       }
@@ -221,6 +236,46 @@ export default function LobbyScreen(): React.ReactElement {
     setGuestPromptOpen(false);
   }, []);
 
+  const handleLowCreditsDismiss = React.useCallback(() => {
+    setLowCreditsPromptOpen(false);
+  }, []);
+
+  const handleLowCreditsGoToStore = React.useCallback(() => {
+    setLowCreditsPromptOpen(false);
+    router.push("./shop");
+  }, [router]);
+
+  const handleWatchRewardedAd = React.useCallback(() => {
+    setRewardStatus(
+      rewardedReady ? "Loading ad…" : "Ad not ready yet — try again shortly.",
+    );
+
+    showRewardedAd({
+      onEarned: () => {
+        void (async () => {
+          // Guests have no backend profile, so credit their local balance.
+          const nextCoins = isGuest
+            ? await awardGuestCredits(REWARD_CREDIT_AMOUNT)
+            : await awardCurrentUserCredits(REWARD_CREDIT_AMOUNT);
+          if (nextCoins === null) {
+            setRewardStatus("Could not add reward credit. Please try again.");
+            return;
+          }
+          setPlayerProfile((prev) => ({ ...prev, coins: nextCoins }));
+          setRewardStatus(`+${REWARD_CREDIT_AMOUNT.toFixed(2)} credit added!`);
+        })();
+      },
+      onUnavailable: () => {
+        setRewardStatus("No ad available right now — try again shortly.");
+      },
+    });
+  }, [isGuest, rewardedReady, showRewardedAd, REWARD_CREDIT_AMOUNT]);
+
+  const handleLowCreditsWatchAd = React.useCallback(() => {
+    setLowCreditsPromptOpen(false);
+    handleWatchRewardedAd();
+  }, [handleWatchRewardedAd]);
+
   const updateQuickMatchSession = React.useCallback(
     (nextSession: QuickMatchSession) => {
       setQuickMatchSession((previousSession) => {
@@ -307,6 +362,11 @@ export default function LobbyScreen(): React.ReactElement {
       return;
     }
 
+    if (playerProfile.coins < 1) {
+      setLowCreditsPromptOpen(true);
+      return;
+    }
+
     setQuickMatchOpen(true);
     setQuickMatchLoading(true);
     setQuickMatchError(null);
@@ -333,7 +393,7 @@ export default function LobbyScreen(): React.ReactElement {
     } finally {
       setQuickMatchLoading(false);
     }
-  }, [router, updateQuickMatchSession]);
+  }, [router, updateQuickMatchSession, playerProfile.coins]);
 
   const handleQuickMatchCancel = React.useCallback(() => {
     const matchId = quickMatchSession?.matchId;
@@ -396,26 +456,6 @@ export default function LobbyScreen(): React.ReactElement {
       <AppThemeBackdrop theme={appTheme} />
       <SafeAreaView style={styles.topSafeArea} edges={["top"]}>
         <View style={styles.topBar}>
-          <TouchableOpacity
-            style={[styles.storeButton, isGuest && styles.disabledStoreButton]}
-            activeOpacity={0.85}
-            onPress={() => {
-              if (isGuest) {
-                handleRestrictedGuestAction();
-                return;
-              }
-              router.push("./shop");
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Store"
-          >
-            <MaterialCommunityIcons
-              name="store-outline"
-              size={30}
-              color="#ffffff"
-            />
-          </TouchableOpacity>
-
           <View style={styles.actionStack}>
             <TouchableOpacity
               style={styles.settingsButton}
@@ -443,6 +483,31 @@ export default function LobbyScreen(): React.ReactElement {
       </SafeAreaView>
 
       <View style={styles.panel}>
+        <TouchableOpacity
+          style={[
+            styles.storeButton,
+            styles.panelStoreButton,
+            isGuest && styles.disabledStoreButton,
+          ]}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (isGuest) {
+              handleRestrictedGuestAction();
+              return;
+            }
+            router.push("./shop");
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Store"
+        >
+          <MaterialCommunityIcons
+            name="storefront"
+            size={28}
+            color="#f6d43a"
+          />
+          <Text3D style={styles.storeButtonLabel}>Store</Text3D>
+        </TouchableOpacity>
+
         <Text3D style={styles.title}>7-Card Rummy</Text3D>
         <Text3D style={styles.subtitle}>Choose a mode to start</Text3D>
 
@@ -503,6 +568,7 @@ export default function LobbyScreen(): React.ReactElement {
               styles.diamondButton,
               styles.onlineButton,
               styles.actionRight,
+              playerProfile.coins < 1 && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
             onPress={() => {
@@ -552,34 +618,26 @@ export default function LobbyScreen(): React.ReactElement {
           <TouchableOpacity
             style={[
               styles.diamondButton,
-              styles.tournamentButton,
+              styles.watchAdButton,
               styles.actionLeft,
-              isGuest && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
-            onPress={() => {
-              if (isGuest) {
-                handleRestrictedGuestAction();
-                return;
-              }
-
-              if (Feature.aiModeOnly.enabled) {
-                router.push("/under-construction");
-                return;
-              }
-
-              router.push("/under-construction");
-            }}
+            onPress={handleWatchRewardedAd}
+            accessibilityRole="button"
+            accessibilityLabel="Watch ad to gain credits"
           >
             <View style={styles.diamondButtonContent}>
               <Text3D
-                style={[styles.diamondButtonText, styles.tournamentButtonText]}
+                style={[styles.diamondButtonText, styles.watchAdButtonText]}
               >
-                Tournament
+                Watch ad to gain credits
               </Text3D>
             </View>
           </TouchableOpacity>
         </View>
+        {rewardStatus ? (
+          <Text3D style={styles.watchAdStatusText}>{rewardStatus}</Text3D>
+        ) : null}
       </View>
 
       <Modal
@@ -775,6 +833,62 @@ export default function LobbyScreen(): React.ReactElement {
       </Modal>
 
       <Modal
+        visible={lowCreditsPromptOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleLowCreditsDismiss}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text3D style={[styles.modalTitle, styles.modalHeaderTitle]}>
+                Not Enough Credits
+              </Text3D>
+              <TouchableOpacity
+                style={styles.modalIconCloseBtn}
+                activeOpacity={0.8}
+                onPress={handleLowCreditsDismiss}
+                accessibilityRole="button"
+                accessibilityLabel="Close not enough credits modal"
+              >
+                <MaterialCommunityIcons
+                  name="close"
+                  size={20}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <Text3D style={styles.settingsHint}>
+              You need at least 1 credit to play Quick Match. Watch an ad to
+              earn credits or buy more from the Store.
+            </Text3D>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              activeOpacity={0.85}
+              onPress={handleLowCreditsWatchAd}
+            >
+              <Text3D style={styles.modalCloseText}>Watch Ad</Text3D>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modalCloseBtn,
+                styles.lowCreditsSecondaryBtn,
+                isGuest && styles.disabledStoreButton,
+              ]}
+              activeOpacity={0.85}
+              disabled={isGuest}
+              onPress={handleLowCreditsGoToStore}
+            >
+              <Text3D style={styles.modalCloseText}>Go to Store</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={quickMatchOpen}
         transparent
         animationType="fade"
@@ -930,18 +1044,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionStack: {
-    alignItems: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   storeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    minWidth: 56,
+    borderRadius: 16,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderColor: "rgba(255,255,255,0.26)",
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 2,
+  },
+  storeButtonLabel: {
+    color: "#f6d43a",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  panelStoreButton: {
+    position: "absolute",
+    left: 16,
+    bottom: 16,
+    zIndex: 5,
   },
   disabledStoreButton: {
     opacity: 0.42,
@@ -971,6 +1100,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   panel: {
+    position: "relative",
     width: "100%",
     maxWidth: 420,
     borderRadius: 20,
@@ -1049,6 +1179,21 @@ const styles = StyleSheet.create({
   },
   coinValueText: {
     color: "#ffe89a",
+  },
+  // Orbit diamond color for the watch-ad button (replaces Tournament).
+  watchAdButton: {
+    backgroundColor: "#d35400",
+  },
+  watchAdButtonText: {
+    color: "#ffffff",
+  },
+  watchAdStatusText: {
+    color: "#cfe8d8",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 6,
+    textAlign: "center",
+    paddingHorizontal: 72,
   },
   actionsOrbit: {
     width: 300,
@@ -1335,6 +1480,9 @@ const styles = StyleSheet.create({
     color: "#1a1a2e",
     fontWeight: "bold",
     fontSize: 14,
+  },
+  lowCreditsSecondaryBtn: {
+    marginTop: 10,
   },
   signOutBtn: {
     borderRadius: 14,

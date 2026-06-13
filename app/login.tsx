@@ -9,6 +9,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -46,9 +47,6 @@ const THIRD_PARTY_AUTH_URLS: Record<ThirdPartyProvider, string> = {
 const Feature = {
   thirdPartySignin: {
     enabled: false,
-  },
-  sponsorAd: {
-    enabled: true,
   },
 } as const;
 
@@ -192,7 +190,6 @@ export default function LoginScreen(): React.ReactElement {
 
   const destination = "/lobby";
   const isThirdPartyAuthEnabled = Feature.thirdPartySignin.enabled;
-  const isSponsorAdEnabled = Feature.sponsorAd.enabled;
 
   const submitLabel = authMode === "signup" ? "Create Account" : "Sign In";
 
@@ -793,6 +790,12 @@ export default function LoginScreen(): React.ReactElement {
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.wrapper}
       >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <Animated.View
           style={[
             styles.brandBlock,
@@ -1111,38 +1114,13 @@ export default function LoginScreen(): React.ReactElement {
           </Pressable>
         </Animated.View>
 
-        {isSponsorAdEnabled && authMode === "signin" ? (
-          <Animated.View
-            style={[
-              styles.sponsorBanner,
-              {
-                opacity: cardIntroOpacity,
-                transform: [
-                  {
-                    translateY: cardIntroY.interpolate({
-                      inputRange: [0, 22],
-                      outputRange: [0, 8],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.sponsorHeader}>
-              <View style={styles.sponsorIcon}>
-                <MaterialCommunityIcons
-                  name="google-ads"
-                  size={24}
-                  color="#ffe7a3"
-                />
-              </View>
-              <Text3D style={styles.sponsorLabel} animate={false}>
-                Google Sponsored Ad
-              </Text3D>
-            </View>
-            <GoogleAdMobBanner />
-          </Animated.View>
-        ) : null}
+        <View style={styles.adBannerContainer}>
+          <Text3D style={styles.adBannerLabel} animate={false}>
+            Sponsored
+          </Text3D>
+          <GoogleAdMobBanner />
+        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1177,12 +1155,18 @@ const styles = StyleSheet.create({
   },
   wrapper: {
     flex: 1,
+    backgroundColor: "#12161f",
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 40,
     paddingBottom: 28,
     justifyContent: "flex-start",
     gap: 22,
-    backgroundColor: "#12161f",
   },
   brandBlock: {
     gap: 10,
@@ -1381,33 +1365,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
-  sponsorBanner: {
-    minHeight: 132,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255, 231, 163, 0.34)",
-    backgroundColor: "#1b2638",
-    gap: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  sponsorHeader: {
-    flexDirection: "row",
+  adBannerContainer: {
+    marginTop: 16,
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 4,
+    gap: 6,
   },
-  sponsorIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(244, 198, 91, 0.16)",
-  },
-  sponsorLabel: {
-    color: "#d8e2f5",
-    fontSize: 12,
-    fontWeight: "800",
+  adBannerLabel: {
+    color: "#7f8db0",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 });

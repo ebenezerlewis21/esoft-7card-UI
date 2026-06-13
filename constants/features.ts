@@ -1,5 +1,5 @@
 export const Feature = {
   aiModeOnly: {
-    enabled: true,
+    enabled: false,
   },
 } as const;

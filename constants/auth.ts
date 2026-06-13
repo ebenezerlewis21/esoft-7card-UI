@@ -57,6 +57,7 @@ const CURRENT_USER_KEY = "@auth/currentUser";
 const CURRENT_EMAIL_KEY = "@auth/currentEmail";
 const CURRENT_AUTH_CREDENTIAL_KEY = "@auth/currentAuthCredential";
 const GUEST_SESSION_KEY = "@auth/guestSession";
+const GUEST_CREDITS_KEY = "@auth/guestCredits";
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
 const TEST_PROFILE_NAME = "test";
@@ -65,7 +66,8 @@ const DEFAULT_SIGNUP_PROFILE: Omit<UserProfile, "name"> = {
   wins: 0,
   gamesPlayed: 0,
   rank: "Unranked",
-  coins: 0,
+  // New accounts start with 5 credits on successful sign up.
+  coins: 5,
 };
 
 const DEFAULT_TEST_PROFILE: Omit<UserProfile, "name"> = {
@@ -205,6 +207,9 @@ export const clearAuthCredential = async (): Promise<void> => {
 export const setGuestSession = async (): Promise<void> => {
   await AsyncStorage.setItem(GUEST_SESSION_KEY, "true");
   guestSessionActive = true;
+  // A fresh guest session always starts with zero credits; guests must watch
+  // ads to earn credit locally during the session.
+  await AsyncStorage.removeItem(GUEST_CREDITS_KEY);
 };
 
 export const clearGuestSession = async (): Promise<void> => {
@@ -707,6 +712,79 @@ export const spendCurrentUserCoins = async (
     });
 
     return nextCoins;
+  } catch {
+    return null;
+  }
+};
+
+// Award fractional credits to the current user (e.g. a 0.25 reward for
+// watching a rewarded ad). Credits are stored as a floating-point balance so
+// sub-1 rewards accumulate rather than being lost to integer truncation.
+// Updates the local profile and returns the new balance, or null on failure.
+export const awardCurrentUserCredits = async (
+  amount: number,
+): Promise<number | null> => {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  try {
+    const name = await AsyncStorage.getItem(CURRENT_USER_KEY);
+    if (!name) return null;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return null;
+
+    const profiles = await readProfileMap();
+    const currentProfile =
+      profiles[trimmedName] ??
+      ({
+        name: trimmedName,
+        ...getDefaultProfileForName(trimmedName),
+      } as UserProfile);
+
+    const nextCoins = Math.max(0, currentProfile.coins + amount);
+    const nextProfile: UserProfile = {
+      ...currentProfile,
+      coins: nextCoins,
+    };
+
+    await writeProfileMap({
+      ...profiles,
+      [trimmedName]: nextProfile,
+    });
+
+    return nextCoins;
+  } catch {
+    return null;
+  }
+};
+
+// Guest users have no backend/profile, so their ad-reward credits are kept in a
+// local fractional balance. Returns 0 when none have been earned.
+export const getGuestCredits = async (): Promise<number> => {
+  try {
+    const raw = await AsyncStorage.getItem(GUEST_CREDITS_KEY);
+    const value = raw ? Number.parseFloat(raw) : 0;
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+};
+
+// Add fractional credits to the guest's local balance and return the new total.
+export const awardGuestCredits = async (
+  amount: number,
+): Promise<number | null> => {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  try {
+    const current = await getGuestCredits();
+    const next = Math.max(0, current + amount);
+    await AsyncStorage.setItem(GUEST_CREDITS_KEY, String(next));
+    return next;
   } catch {
     return null;
   }

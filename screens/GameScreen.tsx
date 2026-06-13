@@ -5,6 +5,7 @@ import CenterZone from "@/components/CenterZone";
 import PlayerHand from "@/components/PlayerHand";
 import ResultModal from "@/components/ResultModal";
 import Text3D from "@/components/Text3D";
+import { useInterstitialAd } from "@/components/useInterstitialAd";
 import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
@@ -265,9 +266,10 @@ export default function GameScreen(): React.ReactElement {
   const [matchWinnerIdx, setMatchWinnerIdx] = useState<number | null>(null);
   const [isShuffling, setIsShuffling] = useState<boolean>(true);
   const [revealedHumanCount, setRevealedHumanCount] = useState<number>(0);
-  const [showGameScreenAd, setShowGameScreenAd] = useState<boolean>(false);
   const [showWinnerReveal, setShowWinnerReveal] = useState<boolean>(false);
   const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
+  const { showAd: showInterstitialAd, status: interstitialStatus } =
+    useInterstitialAd();
   const [winnerRevealCountdown, setWinnerRevealCountdown] = useState<number>(
     WINNER_REVEAL_DURATION_SECONDS,
   );
@@ -581,12 +583,19 @@ export default function GameScreen(): React.ReactElement {
     }
   }, []);
 
+  const revealResultModal = useCallback(() => {
+    setResultModalVisible(true);
+    setWinnerRevealCountdown(WINNER_REVEAL_DURATION_SECONDS);
+  }, [WINNER_REVEAL_DURATION_SECONDS]);
+
   const openResultModal = useCallback(() => {
     clearWinnerRevealTimers();
     setShowWinnerReveal(false);
-    setResultModalVisible(true);
-    setWinnerRevealCountdown(WINNER_REVEAL_DURATION_SECONDS);
-  }, [WINNER_REVEAL_DURATION_SECONDS, clearWinnerRevealTimers]);
+    // Play a full-screen video (interstitial) ad before revealing the result
+    // modal. If ads are unavailable or none is loaded yet, the result modal
+    // opens immediately.
+    showInterstitialAd(revealResultModal);
+  }, [clearWinnerRevealTimers, revealResultModal, showInterstitialAd]);
 
   const runStartShuffleAnimation = useCallback(() => {
     clearShuffleTimers();
@@ -779,27 +788,6 @@ export default function GameScreen(): React.ReactElement {
       return next;
     });
   }, [MATCH_WINS_TO_WIN, isOnlineMode, state.gameOver, state.players]);
-
-  useEffect(() => {
-    if (isOnlineMode) {
-      setShowGameScreenAd(false);
-      return;
-    }
-
-    if (!state.gameOver || !resultModalVisible) {
-      setShowGameScreenAd(false);
-      return;
-    }
-
-    setShowGameScreenAd(true);
-    const adTimer = setTimeout(() => {
-      setShowGameScreenAd(false);
-    }, 4200);
-
-    return () => {
-      clearTimeout(adTimer);
-    };
-  }, [isOnlineMode, resultModalVisible, state.gameOver]);
 
   useEffect(() => {
     if (!state.gameOver) {
@@ -1664,7 +1652,6 @@ export default function GameScreen(): React.ReactElement {
   const resetRound = useCallback(() => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     clearShuffleTimers();
-    setShowGameScreenAd(false);
     setState(createInitialState(getEmojiForPlayerIconId(activePlayerIconId)));
     setAnimatedCards([]);
     setIsShuffling(true);
@@ -1676,7 +1663,6 @@ export default function GameScreen(): React.ReactElement {
   }, [activePlayerIconId, clearShuffleTimers, runStartShuffleAnimation]);
 
   const handleNewGame = useCallback(() => {
-    setShowGameScreenAd(false);
     setMatchWins([0, 0, 0]);
     setMatchWinnerIdx(null);
     roundScoredRef.current = false;
@@ -1693,7 +1679,6 @@ export default function GameScreen(): React.ReactElement {
     }
 
     recordCurrentGameStats();
-    setShowGameScreenAd(false);
     if (matchWinnerIdx !== null) {
       setMatchWins([0, 0, 0]);
       setMatchWinnerIdx(null);
@@ -1772,6 +1757,14 @@ export default function GameScreen(): React.ReactElement {
           <View style={[styles.boardCorner, styles.boardCornerTopRight]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomLeft]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomRight]} />
+
+          {__DEV__ ? (
+            <View style={styles.adDebugBanner} pointerEvents="none">
+              <Text3D style={styles.adDebugBannerText}>
+                Ad: {interstitialStatus}
+              </Text3D>
+            </View>
+          ) : null}
 
           {showTopTurnBanner ? (
             <View style={[styles.shuffleBanner, styles.turnBannerShuffling]}>
@@ -2069,42 +2062,6 @@ export default function GameScreen(): React.ReactElement {
         onBackToLobby={handleBackToLobby}
       />
 
-      <Modal
-        visible={showGameScreenAd}
-        transparent
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        supportedOrientations={[
-          "landscape",
-          "landscape-left",
-          "landscape-right",
-        ]}
-        onRequestClose={() => setShowGameScreenAd(false)}
-      >
-        <View style={styles.adOverlay}>
-          <View style={styles.adCard}>
-            <Text3D style={styles.adLabel}>Sponsored</Text3D>
-            <Text3D style={styles.adTitle}>Level up between rounds</Text3D>
-            <Text3D style={styles.adBody}>
-              This ad slot appears after every round while the feature flag is
-              enabled, so you can swap in a real ad network later.
-            </Text3D>
-
-            <View style={styles.adBanner}>
-              <View style={styles.adBannerGlow} />
-              <Text3D style={styles.adBannerText}>Ad revenue slot</Text3D>
-            </View>
-
-            <TouchableOpacity
-              style={styles.adCtaButton}
-              activeOpacity={0.85}
-              onPress={() => setShowGameScreenAd(false)}
-            >
-              <Text3D style={styles.adCtaText}>Continue</Text3D>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -2259,6 +2216,24 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     zIndex: 20,
   },
+  adDebugBanner: {
+    position: "absolute",
+    bottom: 8,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.78)",
+    borderColor: "rgba(120,200,255,0.8)",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    zIndex: 40,
+  },
+  adDebugBannerText: {
+    color: "#9fd0ff",
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   stopDebugBannerText: {
     color: "#fff",
     fontSize: 11,
@@ -2304,82 +2279,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     fontSize: 10,
   },
-  adOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.82)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  adCard: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 22,
-    backgroundColor: "#163d2e",
-    borderWidth: 2,
-    borderColor: "rgba(246,212,58,0.9)",
-    padding: 22,
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  adLabel: {
-    color: "#f6d43a",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  adTitle: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "800",
-    lineHeight: 28,
-  },
-  adBody: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  adBanner: {
-    height: 88,
-    borderRadius: 18,
-    backgroundColor: "#f6d43a",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    marginTop: 4,
-  },
-  adBannerGlow: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.22)",
-    top: -40,
-    right: -20,
-  },
-  adBannerText: {
-    color: "#1a1a2e",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  adCtaButton: {
-    alignSelf: "flex-end",
-    backgroundColor: "#f6d43a",
-    borderRadius: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    marginTop: 6,
-  },
-  adCtaText: {
-    color: "#1a1a2e",
-    fontSize: 14,
-    fontWeight: "800",
-  },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2388,8 +2287,12 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   player1Wrapper: {
-    width: "74%",
-    maxWidth: 600,
+    // Wide enough to contain the full 7-card hand + info block inside the
+    // panel on narrow landscape boards (e.g. iPhone 16 Pro ~640pt usable).
+    // The floating Stop/Discard button is lifted above the hand (see
+    // primaryFloatingAction) so it no longer competes for this row's width.
+    width: "84%",
+    maxWidth: 620,
     alignSelf: "center",
     marginTop: "auto",
   },
@@ -2430,7 +2333,10 @@ const styles = StyleSheet.create({
   primaryFloatingAction: {
     position: "absolute",
     right: 14,
-    bottom: 14,
+    // Sit above the player hand (which fills the bottom of the board) so the
+    // button never overlaps the cards. The empty band between the top-row
+    // opponents and the human hand has room on narrow landscape boards.
+    bottom: 150,
   },
   stopGameButton: {
     backgroundColor: "#c0392b",
