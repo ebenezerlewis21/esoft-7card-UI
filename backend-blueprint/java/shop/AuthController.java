@@ -53,6 +53,12 @@ public class AuthController {
     authService.logout(request.getHeader("Authorization"), refreshToken);
   }
 
+  @PostMapping("/forgot-password")
+  public ForgotPasswordResponse forgotPassword(@RequestBody ForgotPasswordRequest request) {
+    AuthService.ForgotPasswordResult result = authService.forgotPassword(request.email());
+    return new ForgotPasswordResponse(result.success());
+  }
+
   public record SignupRequest(String name, String email, String password) {}
 
   public record LoginRequest(String email, String password) {}
@@ -60,6 +66,8 @@ public class AuthController {
   public record RefreshRequest(String refreshToken) {}
 
   public record LogoutRequest(String refreshToken) {}
+
+  public record ForgotPasswordRequest(String email) {}
 
   public record SignupResponse(Boolean success, Long userId, String name, String email) {}
 
@@ -83,4 +91,6 @@ public class AuthController {
       String refreshToken,
       String refreshTokenExpiresAt
   ) {}
+
+  public record ForgotPasswordResponse(Boolean success) {}
 }

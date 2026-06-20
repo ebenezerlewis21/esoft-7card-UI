@@ -1,0 +1,63 @@
+name: Deploy to App Stores
+
+# Builds the production app for iOS + Android on EAS and submits the binaries
+# to the App Store (App Store Connect / TestFlight) and the Google Play Store.
+#
+# Runs on every push/merge to `main`. Can also be triggered manually.
+#
+# Required GitHub repository secrets:
+#   EXPO_TOKEN                    - Expo access token (expo.dev > Account > Access Tokens)
+#   GOOGLE_SERVICE_ACCOUNT_JSON   - Full JSON of a Google Play service account key
+#   ASC_API_KEY_P8                - Contents of the App Store Connect API key (.p8 file)
+#
+# The non-secret iOS identifiers (ascApiKeyId / ascApiKeyIssuerId) live in
+# eas.json and must be filled in there. iOS/Android signing credentials must be
+# configured once via `eas credentials` so the build can run non-interactively.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Avoid overlapping store submissions if several commits land quickly.
+concurrency:
+  group: deploy-stores
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & submit (iOS + Android)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Write Google Play service account key
+        run: printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Write App Store Connect API key
+        run: printf '%s' "$ASC_API_KEY_P8" > asc-api-key.p8
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+
+      - name: Build and submit to both stores
+        run: eas build --platform all --profile production --auto-submit --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

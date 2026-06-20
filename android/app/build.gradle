@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.esoft.sevencardrummy.local'
+    namespace 'com.esoft.sevencardrummy'
     defaultConfig {
-        applicationId 'com.esoft.sevencardrummy.local'
+        applicationId 'com.esoft.sevencardrummy'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

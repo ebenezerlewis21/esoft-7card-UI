@@ -1,19 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  BACKGROUNDS,
-  DEFAULT_BACKGROUND_ID,
-  type BackgroundId,
+    BACKGROUNDS,
+    DEFAULT_BACKGROUND_ID,
+    type BackgroundId,
 } from "./backgrounds";
 import { CARD_BACKS, DEFAULT_CARD_BACK_ID, type CardBackId } from "./cardbacks";
 import {
-  DEFAULT_PLAYER_ICON_ID,
-  PLAYER_ICONS,
-  type PlayerIconId,
+    DEFAULT_PLAYER_ICON_ID,
+    PLAYER_ICONS,
+    type PlayerIconId,
 } from "./playerIcons";
 
 const SOUND_ENABLED_KEY = "@settings/soundEnabled";
 const TURN_ALERT_MODE_KEY = "@settings/turnAlertMode";
 const AI_DIFFICULTY_KEY = "@settings/aiDifficulty";
+const TUTORIAL_ENABLED_KEY = "@settings/tutorialEnabled";
 const PLAYER_COINS_KEY = "@profile/playerCoins";
 const OWNED_BACKGROUND_IDS_KEY = "@profile/ownedBackgroundIds";
 const ACTIVE_BACKGROUND_ID_KEY = "@profile/activeBackgroundId";
@@ -26,6 +27,8 @@ const INITIAL_PLAYER_COINS = 25000;
 
 let soundEnabled = true;
 const soundListeners = new Set<(enabled: boolean) => void>();
+let tutorialEnabled = true;
+const tutorialListeners = new Set<(enabled: boolean) => void>();
 export type TurnAlertMode = "vibrate" | "none";
 let turnAlertMode: TurnAlertMode = "vibrate";
 const turnAlertModeListeners = new Set<(mode: TurnAlertMode) => void>();
@@ -53,6 +56,10 @@ let profileHydratePromise: Promise<void> | null = null;
 
 export function isSoundEnabled(): boolean {
   return soundEnabled;
+}
+
+export function isTutorialEnabled(): boolean {
+  return tutorialEnabled;
 }
 
 export function getTurnAlertMode(): TurnAlertMode {
@@ -205,15 +212,6 @@ function persistOwnedPlayerIconIds(): void {
       OWNED_PLAYER_ICON_IDS_KEY,
       JSON.stringify(Array.from(ownedPlayerIconIds)),
     );
-  });
-}
-
-function persistActivePlayerIconId(): void {
-  void AsyncStorage.setItem(
-    ACTIVE_PLAYER_ICON_ID_KEY,
-    activePlayerIconId,
-  ).catch(() => {
-    writeToWebStorage(ACTIVE_PLAYER_ICON_ID_KEY, activePlayerIconId);
   });
 }
 
@@ -437,6 +435,27 @@ async function loadSoundEnabled(): Promise<void> {
   if (nextValue !== soundEnabled) {
     soundEnabled = nextValue;
     soundListeners.forEach((listener) => listener(soundEnabled));
+  }
+}
+
+async function loadTutorialEnabled(): Promise<void> {
+  let storedValue: string | null = null;
+
+  try {
+    storedValue = await AsyncStorage.getItem(TUTORIAL_ENABLED_KEY);
+  } catch {
+    storedValue = readFromWebStorage(TUTORIAL_ENABLED_KEY);
+  }
+
+  if (storedValue === null) return;
+
+  const normalized = storedValue.trim().toLowerCase();
+  const nextValue =
+    normalized === "1" || normalized === "true" || normalized === "on";
+
+  if (nextValue !== tutorialEnabled) {
+    tutorialEnabled = nextValue;
+    tutorialListeners.forEach((listener) => listener(tutorialEnabled));
   }
 }
 
@@ -668,6 +687,7 @@ export function initializeSoundSettings(): Promise<void> {
   if (!hydratePromise) {
     hydratePromise = Promise.all([
       loadSoundEnabled(),
+      loadTutorialEnabled(),
       loadTurnAlertMode(),
       loadAiDifficulty(),
     ]).then(() => undefined);
@@ -706,12 +726,32 @@ export function setSoundEnabled(enabled: boolean): void {
   });
 }
 
+export function setTutorialEnabled(enabled: boolean): void {
+  tutorialEnabled = enabled;
+  tutorialListeners.forEach((listener) => listener(tutorialEnabled));
+
+  const nextValue = tutorialEnabled ? "true" : "false";
+
+  void AsyncStorage.setItem(TUTORIAL_ENABLED_KEY, nextValue).catch(() => {
+    writeToWebStorage(TUTORIAL_ENABLED_KEY, nextValue);
+  });
+}
+
 export function subscribeSoundEnabled(
   listener: (enabled: boolean) => void,
 ): () => void {
   soundListeners.add(listener);
   return () => {
     soundListeners.delete(listener);
+  };
+}
+
+export function subscribeTutorialEnabled(
+  listener: (enabled: boolean) => void,
+): () => void {
+  tutorialListeners.add(listener);
+  return () => {
+    tutorialListeners.delete(listener);
   };
 }
 

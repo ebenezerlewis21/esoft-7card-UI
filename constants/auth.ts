@@ -58,6 +58,7 @@ const CURRENT_EMAIL_KEY = "@auth/currentEmail";
 const CURRENT_AUTH_CREDENTIAL_KEY = "@auth/currentAuthCredential";
 const GUEST_SESSION_KEY = "@auth/guestSession";
 const GUEST_CREDITS_KEY = "@auth/guestCredits";
+const GUEST_INITIAL_CREDITS = 2;
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
 const TEST_PROFILE_NAME = "test";
@@ -207,9 +208,20 @@ export const clearAuthCredential = async (): Promise<void> => {
 export const setGuestSession = async (): Promise<void> => {
   await AsyncStorage.setItem(GUEST_SESSION_KEY, "true");
   guestSessionActive = true;
-  // A fresh guest session always starts with zero credits; guests must watch
-  // ads to earn credit locally during the session.
-  await AsyncStorage.removeItem(GUEST_CREDITS_KEY);
+
+  // Grant guest starter pack only once, then persist locally until app data
+  // is removed (e.g. app uninstall/clear storage).
+  const rawGuestCredits = await AsyncStorage.getItem(GUEST_CREDITS_KEY);
+  const parsedGuestCredits = rawGuestCredits
+    ? Number.parseFloat(rawGuestCredits)
+    : Number.NaN;
+
+  if (rawGuestCredits === null || !Number.isFinite(parsedGuestCredits)) {
+    await AsyncStorage.setItem(
+      GUEST_CREDITS_KEY,
+      String(GUEST_INITIAL_CREDITS),
+    );
+  }
 };
 
 export const clearGuestSession = async (): Promise<void> => {
@@ -760,8 +772,8 @@ export const awardCurrentUserCredits = async (
   }
 };
 
-// Guest users have no backend/profile, so their ad-reward credits are kept in a
-// local fractional balance. Returns 0 when none have been earned.
+// Guest users have no backend/profile, so their credits are kept in local
+// storage (including one-time starter pack on first guest session).
 export const getGuestCredits = async (): Promise<number> => {
   try {
     const raw = await AsyncStorage.getItem(GUEST_CREDITS_KEY);
@@ -783,6 +795,28 @@ export const awardGuestCredits = async (
   try {
     const current = await getGuestCredits();
     const next = Math.max(0, current + amount);
+    await AsyncStorage.setItem(GUEST_CREDITS_KEY, String(next));
+    return next;
+  } catch {
+    return null;
+  }
+};
+
+// Deduct credits from the guest's local balance and return the new total.
+export const spendGuestCredits = async (
+  amount: number,
+): Promise<number | null> => {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  try {
+    const current = await getGuestCredits();
+    if (current < amount) {
+      return null;
+    }
+
+    const next = Math.max(0, current - amount);
     await AsyncStorage.setItem(GUEST_CREDITS_KEY, String(next));
     return next;
   } catch {
