@@ -6,7 +6,12 @@ import PlayerHand from "@/components/PlayerHand";
 import ResultModal from "@/components/ResultModal";
 import Text3D from "@/components/Text3D";
 import { useInterstitialAd } from "@/components/useInterstitialAd";
-import { incrementCurrentUserGamesPlayedFromBackend } from "@/constants/auth";
+import {
+  awardCurrentUserCredits,
+  awardGuestCredits,
+  incrementCurrentUserGamesPlayedFromBackend,
+  isGuestSession,
+} from "@/constants/auth";
 import { BACKGROUNDS } from "@/constants/backgrounds";
 import { CARD_BACKS } from "@/constants/cardbacks";
 import {
@@ -26,12 +31,14 @@ import {
   initializeProfileSettings,
   initializeSoundSettings,
   isSoundEnabled,
+  isTutorialEnabled,
   subscribeAiDifficulty,
   subscribeBackgroundSettings,
   subscribeCardBackSettings,
   subscribePlayerIconSettings,
   subscribeSoundEnabled,
   subscribeTurnAlertMode,
+  subscribeTutorialEnabled,
   type AiDifficulty,
   type TurnAlertMode,
 } from "@/constants/settings";
@@ -213,12 +220,20 @@ export default function GameScreen(): React.ReactElement {
     mode?: string;
     matchId?: string;
     playerId?: string;
+    bet?: string;
   }>();
   const insets = useSafeAreaInsets();
   const onlineMatchId =
     typeof params.matchId === "string" ? params.matchId : undefined;
   const onlinePlayerId =
     typeof params.playerId === "string" ? params.playerId : undefined;
+  const onlineBet = React.useMemo(() => {
+    const parsed = Number.parseInt(
+      typeof params.bet === "string" ? params.bet : "",
+      10,
+    );
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [params.bet]);
   const isOnlineMode =
     params.mode === "online" && Boolean(onlineMatchId && onlinePlayerId);
   const [activeBackgroundId, setActiveBackgroundId] = useState(
@@ -258,6 +273,8 @@ export default function GameScreen(): React.ReactElement {
   );
   const [onlineError, setOnlineError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(isSoundEnabled());
+  const [tutorialEnabled, setTutorialEnabled] =
+    useState<boolean>(isTutorialEnabled());
   const [turnAlertMode, setTurnAlertMode] =
     useState<TurnAlertMode>(getTurnAlertMode());
   const [aiDifficulty, setAiDifficulty] =
@@ -268,8 +285,7 @@ export default function GameScreen(): React.ReactElement {
   const [revealedHumanCount, setRevealedHumanCount] = useState<number>(0);
   const [showWinnerReveal, setShowWinnerReveal] = useState<boolean>(false);
   const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
-  const { showAd: showInterstitialAd, status: interstitialStatus } =
-    useInterstitialAd();
+  const { showAd: showInterstitialAd } = useInterstitialAd();
   const [winnerRevealCountdown, setWinnerRevealCountdown] = useState<number>(
     WINNER_REVEAL_DURATION_SECONDS,
   );
@@ -306,7 +322,6 @@ export default function GameScreen(): React.ReactElement {
   const discardSlotPosRef = useRef<{ x: number; y: number }>({ x: 160, y: 40 });
   const firstSelectedCardPosRef = useRef<{ x: number; y: number } | null>(null);
   const selectedSwapCardPosRef = useRef<{ x: number; y: number } | null>(null);
-  const centerZoneRef = useRef<View>(null);
   const shuffleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const swapSoundTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const roundScoredRef = useRef<boolean>(false);
@@ -322,7 +337,11 @@ export default function GameScreen(): React.ReactElement {
   const winnerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const handTooltipResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const gameRecordedForRoundRef = useRef<boolean>(false);
+  const onlineBetSettledRef = useRef<boolean>(false);
   const shuffleAudio = useAudioPlayer(SHUFFLE_SOUND_SOURCE, {
     downloadFirst: true,
     keepAudioSessionActive: true,
@@ -368,10 +387,15 @@ export default function GameScreen(): React.ReactElement {
       setAiDifficulty(mode);
     });
 
+    const unsubscribeTutorial = subscribeTutorialEnabled((enabled) => {
+      setTutorialEnabled(enabled);
+    });
+
     return () => {
       unsubscribeSound();
       unsubscribeTurnAlertMode();
       unsubscribeAiDifficulty();
+      unsubscribeTutorial();
     };
   }, []);
 
@@ -839,20 +863,48 @@ export default function GameScreen(): React.ReactElement {
     const won = matchWinner === 0;
 
     gameRecordedForRoundRef.current = true;
-    void incrementCurrentUserGamesPlayedFromBackend(won).then((gamesPlayed) => {
-      if (__DEV__) {
-        console.log("[game] server stats update result", {
-          winnerIdx: matchWinner,
-          won,
-          gamesPlayed,
-        });
-      }
-    });
+    void incrementCurrentUserGamesPlayedFromBackend(won);
   }, [isOnlineMode, matchWinnerIdx, state.gameOver, state.players]);
 
   useEffect(() => {
     recordCurrentGameStats();
   }, [recordCurrentGameStats]);
+
+  useEffect(() => {
+    if (!isOnlineMode) {
+      onlineBetSettledRef.current = false;
+      return;
+    }
+
+    if (matchWinnerIdx === null) {
+      onlineBetSettledRef.current = false;
+      return;
+    }
+
+    if (onlineBetSettledRef.current) {
+      return;
+    }
+    onlineBetSettledRef.current = true;
+
+    if (onlineBet <= 0) {
+      return;
+    }
+
+    const winnerIsCurrentUser = matchWinnerIdx === 0;
+    if (!winnerIsCurrentUser) {
+      return;
+    }
+
+    const payoutAmount = onlineBet * 2;
+    void (async () => {
+      const guest = await isGuestSession();
+      if (guest) {
+        await awardGuestCredits(payoutAmount);
+        return;
+      }
+      await awardCurrentUserCredits(payoutAmount);
+    })();
+  }, [isOnlineMode, matchWinnerIdx, onlineBet]);
 
   const endGame = useCallback((message: string) => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
@@ -1624,27 +1676,17 @@ export default function GameScreen(): React.ReactElement {
       return;
     }
 
-    console.log("[STOP] Stop button pressed");
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     setState((prev) => {
-      console.log("[STOP] Pre-end snapshot", {
-        gameOver: prev.gameOver,
-        stopPending: prev.stopPending,
-        turn: prev.turn,
-        phase: prev.phase,
-        aiThinking: prev.aiThinking,
-        message: prev.message,
-      });
       if (prev.gameOver || prev.stopPending) return prev;
       return {
         ...prev,
         aiThinking: false,
         stopPending: true,
-        message: "Debug: Stop pressed, finalizing game…",
+        message: "Stopping game…",
       };
     });
     setTimeout(() => {
-      console.log("[STOP] Triggering endGame");
       endGame("You stopped the game!");
     }, 300);
   }, [endGame, isOnlineMode, submitOnlineAction]);
@@ -1708,13 +1750,203 @@ export default function GameScreen(): React.ReactElement {
     gameOver,
     deck,
     discard,
-    stopPending = false,
   } = state;
   const hasMatchPoint = matchWins.some((count) => count === 2);
   const hasHumanFullyRevealed = revealedHumanCount >= players[0].cards.length;
   const showHumanScore = gameOver || (!isShuffling && hasHumanFullyRevealed);
   const discardTop = discard.length > 0 ? discard[discard.length - 1] : null;
   const isMyTurn = turn === 0 && !gameOver && !state.aiThinking && !isShuffling;
+  const [suppressHandTooltip, setSuppressHandTooltip] = useState(false);
+
+  useEffect(() => {
+    if (phase === "drawn" && drawnCard) {
+      if (handTooltipResetTimerRef.current) {
+        clearTimeout(handTooltipResetTimerRef.current);
+      }
+      setSuppressHandTooltip(true);
+      handTooltipResetTimerRef.current = setTimeout(() => {
+        setSuppressHandTooltip(false);
+        handTooltipResetTimerRef.current = null;
+      }, 260);
+      return;
+    }
+
+    if (handTooltipResetTimerRef.current) {
+      clearTimeout(handTooltipResetTimerRef.current);
+      handTooltipResetTimerRef.current = null;
+    }
+    setSuppressHandTooltip(false);
+  }, [drawnCard, phase]);
+
+  useEffect(() => {
+    return () => {
+      if (handTooltipResetTimerRef.current) {
+        clearTimeout(handTooltipResetTimerRef.current);
+        handTooltipResetTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const tutorialMessage = React.useMemo(() => {
+    if (
+      !tutorialEnabled ||
+      gameOver ||
+      !isMyTurn ||
+      isShuffling ||
+      state.movingCardIdx !== null
+    ) {
+      return null;
+    }
+
+    if (phase === "action") {
+      if (deck.length > 0 && discard.length > 0) {
+        return "Next move: Draw from Deck or take Discard.";
+      }
+      if (discard.length > 0) {
+        return "Next move: Take Discard.";
+      }
+      if (deck.length > 0) {
+        return "Tap deck to draw card.";
+      }
+      return null;
+    }
+
+    return null;
+  }, [
+    deck.length,
+    discard.length,
+    drawnCard,
+    gameOver,
+    isMyTurn,
+    isShuffling,
+    phase,
+    state.movingCardIdx,
+    tutorialEnabled,
+  ]);
+
+  const tutorialTooltipPosition = React.useMemo(() => {
+    if (!tutorialMessage) {
+      return null;
+    }
+
+    if (phase === "action") {
+      const zoneOriginX =
+        topRowOriginRef.current.x + centerPanelOriginRef.current.x;
+      const zoneOriginY =
+        topRowOriginRef.current.y + centerPanelOriginRef.current.y;
+      const deckCenterX = zoneOriginX + deckSlotPosRef.current.x;
+      const deckCenterY = zoneOriginY + deckSlotPosRef.current.y;
+      const discardCenterX = zoneOriginX + discardSlotPosRef.current.x;
+      const discardCenterY = zoneOriginY + discardSlotPosRef.current.y;
+
+      let anchorX = deckCenterX;
+      let anchorY = deckCenterY;
+
+      if (deck.length > 0 && discard.length > 0) {
+        anchorX = (deckCenterX + discardCenterX) / 2;
+        anchorY = Math.min(deckCenterY, discardCenterY);
+      } else if (discard.length > 0) {
+        anchorX = discardCenterX;
+        anchorY = discardCenterY;
+      }
+
+      return {
+        left: Math.max(140, anchorX),
+        top: Math.max(70, anchorY - 72),
+      };
+    }
+
+    if (phase === "drawn" && drawnCard) {
+      return {
+        left: Math.max(140, playerHandOriginRef.current.x + 180),
+        top: Math.max(90, playerHandOriginRef.current.y - 54),
+      };
+    }
+
+    return {
+      left: 200,
+      top: 70,
+    };
+  }, [
+    deck.length,
+    discard.length,
+    drawnCard,
+    phase,
+    tutorialMessage,
+  ]);
+  const actionButtonTooltipMessage = React.useMemo(() => {
+    if (
+      !tutorialEnabled ||
+      gameOver ||
+      !isMyTurn ||
+      isShuffling ||
+      state.movingCardIdx !== null
+    ) {
+      return null;
+    }
+
+    if (phase === "drawn" && drawnCard) {
+      return "Tip: Press Discard to place the drawn card in discard pile and end your turn.";
+    }
+
+    if (phase === "action") {
+      return "Tip: Press Stop if you want to end the round now.";
+    }
+
+    return null;
+  }, [
+    drawnCard,
+    gameOver,
+    isMyTurn,
+    isShuffling,
+    phase,
+    state.movingCardIdx,
+    tutorialEnabled,
+  ]);
+  const handSwapTooltipMessage = React.useMemo(() => {
+    if (
+      !tutorialEnabled ||
+      gameOver ||
+      !isMyTurn ||
+      isShuffling ||
+      suppressHandTooltip
+    ) {
+      return null;
+    }
+
+    if (phase === "drawn" && drawnCard) {
+      return "Tip: Double tap a hand card to swap with the drawn card.";
+    }
+
+    if (phase === "action" && state.movingCardIdx !== null) {
+      return "Tip: Double tap another hand card to swap positions.";
+    }
+
+    if (phase === "action" && state.movingCardIdx === null) {
+      return "Tip: Tap a hand card to select it.";
+    }
+
+    return null;
+  }, [
+    drawnCard,
+    gameOver,
+    isMyTurn,
+    isShuffling,
+    phase,
+    state.movingCardIdx,
+    suppressHandTooltip,
+    tutorialEnabled,
+  ]);
+  const handSwapTooltipPosition = React.useMemo(() => {
+    if (!handSwapTooltipMessage) {
+      return null;
+    }
+
+    return {
+      left: Math.max(170, playerHandOriginRef.current.x + 210),
+      top: Math.max(120, playerHandOriginRef.current.y - 58),
+    };
+  }, [handSwapTooltipMessage]);
   const showTopTurnBanner = isShuffling;
 
   useEffect(() => {
@@ -1746,7 +1978,7 @@ export default function GameScreen(): React.ReactElement {
       />
 
       <View style={styles.container}>
-        <Text3D style={styles.backgroundTitle}>7-Card Rummy</Text3D>
+        <Text3D style={styles.backgroundTitle}>7 Card Rummy</Text3D>
         <View
           style={[
             styles.board,
@@ -1757,14 +1989,6 @@ export default function GameScreen(): React.ReactElement {
           <View style={[styles.boardCorner, styles.boardCornerTopRight]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomLeft]} />
           <View style={[styles.boardCorner, styles.boardCornerBottomRight]} />
-
-          {__DEV__ ? (
-            <View style={styles.adDebugBanner} pointerEvents="none">
-              <Text3D style={styles.adDebugBannerText}>
-                Ad: {interstitialStatus}
-              </Text3D>
-            </View>
-          ) : null}
 
           {showTopTurnBanner ? (
             <View style={[styles.shuffleBanner, styles.turnBannerShuffling]}>
@@ -1782,14 +2006,6 @@ export default function GameScreen(): React.ReactElement {
             </>
           )}
 
-          {stopPending && !gameOver && (
-            <View style={styles.stopDebugBanner}>
-              <Text3D style={styles.stopDebugBannerText}>
-                Debug: stop pressed, setting gameOver...
-              </Text3D>
-            </View>
-          )}
-
           {isOnlineMode && (
             <View style={styles.onlineGameBanner}>
               <Text3D style={styles.onlineGameBannerText}>
@@ -1799,6 +2015,31 @@ export default function GameScreen(): React.ReactElement {
               </Text3D>
             </View>
           )}
+
+          {tutorialMessage ? (
+            <View style={[styles.tutorialTooltip, tutorialTooltipPosition]}>
+              <View style={styles.tutorialTooltipArrow} />
+              <Text3D style={styles.tutorialTooltipText}>{tutorialMessage}</Text3D>
+            </View>
+          ) : null}
+
+          {actionButtonTooltipMessage ? (
+            <View style={styles.actionButtonTooltip}>
+              <View style={styles.actionButtonTooltipArrow} />
+              <Text3D style={styles.actionButtonTooltipText}>
+                {actionButtonTooltipMessage}
+              </Text3D>
+            </View>
+          ) : null}
+
+          {handSwapTooltipMessage ? (
+            <View style={[styles.handSwapTooltip, handSwapTooltipPosition]}>
+              <View style={styles.handSwapTooltipArrow} />
+              <Text3D style={styles.handSwapTooltipText}>
+                {handSwapTooltipMessage}
+              </Text3D>
+            </View>
+          ) : null}
 
           {deckToastMessage && (
             <Animated.View
@@ -2205,40 +2446,6 @@ const styles = StyleSheet.create({
     left: "50%",
     marginLeft: -44,
   },
-  stopDebugBanner: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    right: 84,
-    backgroundColor: "rgba(192,57,43,0.9)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    zIndex: 20,
-  },
-  adDebugBanner: {
-    position: "absolute",
-    bottom: 8,
-    alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.78)",
-    borderColor: "rgba(120,200,255,0.8)",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    zIndex: 40,
-  },
-  adDebugBannerText: {
-    color: "#9fd0ff",
-    fontSize: 10,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  stopDebugBannerText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "bold",
-  },
   onlineGameBanner: {
     position: "absolute",
     top: 12,
@@ -2257,6 +2464,101 @@ const styles = StyleSheet.create({
     color: "#f6d43a",
     fontSize: 11,
     fontWeight: "800",
+    textAlign: "center",
+  },
+  tutorialTooltip: {
+    position: "absolute",
+    width: 260,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderColor: "rgba(255,255,255,0.35)",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    zIndex: 22,
+    alignItems: "center",
+    transform: [{ translateX: -130 }],
+  },
+  tutorialTooltipArrow: {
+    position: "absolute",
+    bottom: -6,
+    left: "50%",
+    marginLeft: -6,
+    width: 12,
+    height: 12,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    transform: [{ rotate: "45deg" }],
+  },
+  tutorialTooltipText: {
+    color: "#fdf0b4",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  actionButtonTooltip: {
+    position: "absolute",
+    right: 14,
+    bottom: 206,
+    width: 240,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderColor: "rgba(255,255,255,0.35)",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    zIndex: 22,
+  },
+  actionButtonTooltipArrow: {
+    position: "absolute",
+    bottom: -6,
+    right: 28,
+    width: 12,
+    height: 12,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    transform: [{ rotate: "45deg" }],
+  },
+  actionButtonTooltipText: {
+    color: "#fdf0b4",
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  handSwapTooltip: {
+    position: "absolute",
+    width: 250,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderColor: "rgba(255,255,255,0.35)",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    zIndex: 22,
+    alignItems: "center",
+    transform: [{ translateX: -125 }],
+  },
+  handSwapTooltipArrow: {
+    position: "absolute",
+    bottom: -6,
+    left: "50%",
+    marginLeft: -6,
+    width: 12,
+    height: 12,
+    backgroundColor: "rgba(10,18,14,0.9)",
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    transform: [{ rotate: "45deg" }],
+  },
+  handSwapTooltipText: {
+    color: "#fdf0b4",
+    fontSize: 10,
+    fontWeight: "700",
     textAlign: "center",
   },
   legend: {

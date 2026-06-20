@@ -27,11 +27,14 @@ public class AuthService {
   private static final String JWT_ALG = "HS256";
   private static final long ACCESS_TOKEN_TTL_MINUTES = 15;
   private static final long REFRESH_TOKEN_TTL_DAYS = 14;
+  private static final long PASSWORD_RESET_TOKEN_TTL_MINUTES = 30;
   private static final String DEFAULT_DEV_SECRET = "replace-this-dev-secret-with-long-random-string";
 
   private final AtomicLong nextUserId = new AtomicLong(1000);
   private final Map<String, UserRecord> usersByEmail = new ConcurrentHashMap<>();
   private final Map<String, RefreshTokenRecord> refreshTokensByToken = new ConcurrentHashMap<>();
+  private final Map<String, PasswordResetTokenRecord> passwordResetTokensByToken =
+      new ConcurrentHashMap<>();
   private final Map<String, Instant> revokedTokenIds = new ConcurrentHashMap<>();
   private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -116,6 +119,27 @@ public class AuthService {
         tokenPair.refreshToken(),
         tokenPair.refreshTokenExpiresAt()
     );
+  }
+
+  public ForgotPasswordResult forgotPassword(String email) {
+    String normalizedEmail = normalizeEmail(email);
+    UserRecord user = usersByEmail.get(normalizedEmail);
+
+    if (user == null) {
+      return new ForgotPasswordResult(true);
+    }
+
+    Instant expiresAt = Instant.now().plus(PASSWORD_RESET_TOKEN_TTL_MINUTES, ChronoUnit.MINUTES);
+    String token = UUID.randomUUID().toString().replace("-", "")
+        + UUID.randomUUID().toString().replace("-", "");
+
+    pruneExpiredPasswordResetTokens();
+    passwordResetTokensByToken.put(
+        token,
+        new PasswordResetTokenRecord(token, user.userId(), user.email(), expiresAt)
+    );
+
+    return new ForgotPasswordResult(true);
   }
 
   public Optional<AuthPrincipal> authenticateAuthorizationHeader(String authorizationHeader) {
@@ -281,6 +305,11 @@ public class AuthService {
     revokedTokenIds.entrySet().removeIf(entry -> entry.getValue().isBefore(now));
   }
 
+  private void pruneExpiredPasswordResetTokens() {
+    Instant now = Instant.now();
+    passwordResetTokensByToken.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
+  }
+
   private String extractBearerToken(String authorizationHeader) {
     if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
       return null;
@@ -356,6 +385,8 @@ public class AuthService {
 
   private record RefreshTokenRecord(String token, Long userId, Instant expiresAt) {}
 
+  private record PasswordResetTokenRecord(String token, Long userId, String email, Instant expiresAt) {}
+
   private record TokenPair(
       String accessToken,
       String accessTokenExpiresAt,
@@ -385,4 +416,6 @@ public class AuthService {
       String refreshToken,
       String refreshTokenExpiresAt
   ) {}
+
+  public record ForgotPasswordResult(Boolean success) {}
 }

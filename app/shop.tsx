@@ -3,53 +3,53 @@ import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
-  Animated,
-  Easing,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    Animated,
+    Easing,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppThemeBackdrop from "../components/AppThemeBackdrop";
 import Text3D from "../components/Text3D";
 import {
-  appThemeFromShopItem,
-  getActiveAppTheme,
-  getActiveAppThemeId,
-  initializeAppThemeSettings,
-  setActiveAppTheme,
-  subscribeAppThemeSettings,
+    appThemeFromShopItem,
+    getActiveAppTheme,
+    getActiveAppThemeId,
+    initializeAppThemeSettings,
+    setActiveAppTheme,
+    subscribeAppThemeSettings,
 } from "../constants/appThemes";
 import {
-  equipCurrentUserShopItemFromBackend,
-  getCurrentUserProfile,
-  getCurrentUserShopInventoryFromBackend,
-  getCreditPacksFromBackend,
-  getShopCatalogFromBackend,
-  purchaseCurrentUserShopItemFromBackend,
-  startCreditPackPurchaseFromBackend,
-  syncCurrentUserProfileFromBackend,
-  type CreditPack,
-  type ShopCatalogItem,
-  type ShopItemType,
+    equipCurrentUserShopItemFromBackend,
+    getCreditPacksFromBackend,
+    getCurrentUserProfile,
+    getCurrentUserShopInventoryFromBackend,
+    getShopCatalogFromBackend,
+    purchaseCurrentUserShopItemFromBackend,
+    startCreditPackPurchaseFromBackend,
+    syncCurrentUserProfileFromBackend,
+    type CreditPack,
+    type ShopCatalogItem,
+    type ShopItemType,
 } from "../constants/auth";
 import { type BackgroundId } from "../constants/backgrounds";
 import { type CardBackId } from "../constants/cardbacks";
 import { type PlayerIconId } from "../constants/playerIcons";
 import {
-  getActivePlayerIconId,
-  getOwnedPlayerIconIds,
-  initializeProfileSettings,
-  setActiveBackgroundId,
-  setActiveCardBackId,
-  setActivePlayerIconId,
-  subscribePlayerIconSettings,
-  unlockBackground,
-  unlockCardBack,
-  unlockPlayerIcon,
+    getActivePlayerIconId,
+    getOwnedPlayerIconIds,
+    initializeProfileSettings,
+    setActiveBackgroundId,
+    setActiveCardBackId,
+    setActivePlayerIconId,
+    subscribePlayerIconSettings,
+    unlockBackground,
+    unlockCardBack,
+    unlockPlayerIcon,
 } from "../constants/settings";
 
 const BACKGROUND_ID_SET = new Set<BackgroundId>([
@@ -241,6 +241,9 @@ const toRenderableItem = (item: ShopCatalogItem): ShopRenderableItem => {
       defaultIcon,
   };
 };
+
+const toCreditPackDisplayName = (name: string): string =>
+  name.replace(/starter\s+credits?/i, "Starter Pack");
 
 export default function ShopScreen(): React.ReactElement {
   const router = useRouter();
@@ -545,7 +548,14 @@ export default function ShopScreen(): React.ReactElement {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
-        <Text3D style={styles.sectionTitle}>Buy Credits</Text3D>
+        <View style={styles.sectionTitleWithIcon}>
+          <Text3D style={styles.sectionTitle}>Buy</Text3D>
+          <MaterialCommunityIcons
+            name="diamond-stone"
+            size={17}
+            color="#f6d43a"
+          />
+        </View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -567,15 +577,10 @@ export default function ShopScreen(): React.ReactElement {
                 <View style={styles.previewGlow} />
                 <View style={styles.previewBadge}>
                   <MaterialCommunityIcons
-                    name="cash-plus"
-                    size={18}
-                    color="#8ef0ae"
+                    name="diamond-stone"
+                    size={16}
+                    color="#f6d43a"
                   />
-                  <Text3D
-                    style={[styles.previewBadgeText, { color: "#8ef0ae" }]}
-                  >
-                    Credits
-                  </Text3D>
                 </View>
 
                 <Text3D style={styles.creditAmountText}>
@@ -587,12 +592,10 @@ export default function ShopScreen(): React.ReactElement {
 
               <View style={styles.cardBody}>
                 <View style={styles.cardTitleRow}>
-                  <Text3D style={styles.cardTitle}>{pack.name}</Text3D>
+                  <Text3D style={styles.cardTitle}>
+                    {toCreditPackDisplayName(pack.name)}
+                  </Text3D>
                 </View>
-
-                <Text3D style={styles.themeDescription}>
-                  Add credits to buy gameboards, cards, icons, and themes.
-                </Text3D>
 
                 <Pressable
                   onPress={() => {
@@ -1103,16 +1106,29 @@ export default function ShopScreen(): React.ReactElement {
               { backgroundColor: appTheme.colors.settingsBackground },
             ]}
           >
-            <Text3D style={styles.modalTitle}>Buy Credits</Text3D>
+            <View style={styles.modalTitleWithIcon}>
+              <Text3D style={styles.modalTitle}>Buy</Text3D>
+              <MaterialCommunityIcons
+                name="diamond-stone"
+                size={20}
+                color="#f6d43a"
+              />
+            </View>
 
             {selectedCreditPack ? (
               <>
-                <Text3D style={styles.creditModalAmount}>
-                  {new Intl.NumberFormat("en-US", {
-                    maximumFractionDigits: 0,
-                  }).format(selectedCreditPack.credits)}{" "}
-                  Credits
-                </Text3D>
+                <View style={styles.creditModalAmountRow}>
+                  <MaterialCommunityIcons
+                    name="diamond-stone"
+                    size={18}
+                    color="#8ef0ae"
+                  />
+                  <Text3D style={styles.creditModalAmount}>
+                    {new Intl.NumberFormat("en-US", {
+                      maximumFractionDigits: 0,
+                    }).format(selectedCreditPack.credits)}
+                  </Text3D>
+                </View>
                 <Text3D style={styles.creditModalPrice}>
                   {new Intl.NumberFormat("en-US", {
                     style: "currency",
@@ -1227,8 +1243,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     fontWeight: "800",
+  },
+  sectionTitleWithIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
     marginTop: 4,
     marginBottom: 2,
+    paddingHorizontal: 16,
   },
   card: {
     width: 236,
@@ -1370,12 +1392,24 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
   },
+  modalTitleWithIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   creditModalAmount: {
     color: "#8ef0ae",
     fontSize: 26,
     lineHeight: 32,
     fontWeight: "900",
     textAlign: "center",
+  },
+  creditModalAmountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
   creditModalPrice: {
     color: "#fdf0b4",

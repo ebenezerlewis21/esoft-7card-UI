@@ -1,4 +1,4 @@
-package com.esoft.sevencardrummy.local
+package com.esoft.sevencardrummy
 
 import android.os.Build
 import android.os.Bundle

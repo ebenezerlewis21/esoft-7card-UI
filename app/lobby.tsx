@@ -4,62 +4,69 @@ import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import React from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  Platform,
-  StyleSheet,
-  Switch,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    Platform,
+    StyleSheet,
+    Switch,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppThemeBackdrop from "../components/AppThemeBackdrop";
+import GoogleAdMobBanner from "../components/GoogleAdMobBanner";
 import RankIcon from "../components/RankIcon";
 import Text3D from "../components/Text3D";
+import { useRewardedAd } from "../components/useRewardedAd";
 import {
-  appThemeFromShopItem,
-  getActiveAppTheme,
-  initializeAppThemeSettings,
-  setActiveAppTheme,
-  subscribeAppThemeSettings,
+    appThemeFromShopItem,
+    getActiveAppTheme,
+    initializeAppThemeSettings,
+    setActiveAppTheme,
+    subscribeAppThemeSettings,
 } from "../constants/appThemes";
 import {
-  awardCurrentUserCredits,
-  awardGuestCredits,
-  clearAuthCredential,
-  clearCurrentEmail,
-  clearCurrentName,
-  clearGuestSession,
-  getCurrentUserProfile,
-  getCurrentUserShopInventoryFromBackend,
-  getGuestCredits,
-  syncCurrentUserProfileFromBackend,
+    awardCurrentUserCredits,
+    awardGuestCredits,
+    clearAuthCredential,
+    clearCurrentEmail,
+    clearCurrentName,
+    clearGuestSession,
+    getCurrentUserProfile,
+    getCurrentUserShopInventoryFromBackend,
+    getGuestCredits,
+    spendCurrentUserCoins,
+    spendGuestCredits,
+    syncCurrentUserProfileFromBackend,
 } from "../constants/auth";
-import { useRewardedAd } from "../components/useRewardedAd";
 import { Feature } from "../constants/features";
 import {
-  getQuickMatch,
-  getQuickMatchIdentity,
-  joinQuickMatch,
-  leaveQuickMatch,
-  QUICK_MATCH_MAX_PLAYERS,
-  startQuickMatchGame,
-  type QuickMatchIdentity,
-  type QuickMatchSession,
+    getQuickMatch,
+    getQuickMatchIdentity,
+    joinQuickMatch,
+    leaveQuickMatch,
+    QUICK_MATCH_MAX_PLAYERS,
+    startQuickMatchGame,
+    type QuickMatchIdentity,
+    type QuickMatchSession,
 } from "../constants/multiplayer";
 import {
-  getAiDifficulty,
-  getTurnAlertMode,
-  initializeProfileSettings,
-  initializeSoundSettings,
-  isSoundEnabled,
-  setAiDifficulty,
-  setSoundEnabled,
-  setTurnAlertMode,
-  subscribeSoundEnabled,
-  subscribeTurnAlertMode,
-  type AiDifficulty,
-  type TurnAlertMode,
+    getAiDifficulty,
+    getTurnAlertMode,
+    initializeProfileSettings,
+    initializeSoundSettings,
+    isSoundEnabled,
+    isTutorialEnabled,
+    setAiDifficulty,
+    setSoundEnabled,
+    setTurnAlertMode,
+    setTutorialEnabled,
+    subscribeSoundEnabled,
+    subscribeTurnAlertMode,
+    subscribeTutorialEnabled,
+    type AiDifficulty,
+    type TurnAlertMode,
 } from "../constants/settings";
 
 const DEFAULT_PROFILE = {
@@ -71,6 +78,16 @@ const DEFAULT_PROFILE = {
 };
 
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
+const BET_PRESETS = [1, 2, 3, 4, 5] as const;
+const TITLE_CARD_GRAPHIC = [
+  "cards-heart",
+  "cards-spade",
+  "cards-diamond",
+  "cards-club",
+  "cards-playing",
+  "cards-heart",
+  "cards-spade",
+] as const;
 
 export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
@@ -86,6 +103,7 @@ export default function LobbyScreen(): React.ReactElement {
   );
   const [quickMatchSession, setQuickMatchSession] =
     React.useState<QuickMatchSession | null>(null);
+  const [quickMatchBet, setQuickMatchBet] = React.useState<number | null>(null);
   const [quickMatchIdentity, setQuickMatchIdentity] =
     React.useState<QuickMatchIdentity | null>(null);
   const [latestQuickMatchPlayerId, setLatestQuickMatchPlayerId] =
@@ -93,6 +111,9 @@ export default function LobbyScreen(): React.ReactElement {
   const [isGuest, setIsGuest] = React.useState(true);
   const [playerProfile, setPlayerProfile] = React.useState(DEFAULT_PROFILE);
   const [soundEnabled, setSoundEnabledState] = React.useState(isSoundEnabled());
+  const [tutorialEnabled, setTutorialEnabledState] = React.useState(
+    isTutorialEnabled(),
+  );
   const [turnAlertMode, setTurnAlertModeState] =
     React.useState<TurnAlertMode>(getTurnAlertMode());
   const [selectedAiDifficulty, setSelectedAiDifficulty] =
@@ -100,7 +121,12 @@ export default function LobbyScreen(): React.ReactElement {
   const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
   const { rewardedReady, showRewardedAd } = useRewardedAd();
   const [rewardStatus, setRewardStatus] = React.useState<string | null>(null);
+  const [betModalOpen, setBetModalOpen] = React.useState(false);
+  const [selectedBet, setSelectedBet] = React.useState(1);
+  const [customBetInput, setCustomBetInput] = React.useState("");
+  const [betError, setBetError] = React.useState<string | null>(null);
   const REWARD_CREDIT_AMOUNT = 0.25;
+  const maxAffordableBet = Math.max(0, Math.floor(playerProfile.coins));
   const winRatio = Math.round(
     (playerProfile.wins / Math.max(1, playerProfile.gamesPlayed)) * 100,
   );
@@ -197,6 +223,10 @@ export default function LobbyScreen(): React.ReactElement {
       setTurnAlertModeState(mode);
     });
 
+    const unsubscribeTutorial = subscribeTutorialEnabled((enabled) => {
+      setTutorialEnabledState(enabled);
+    });
+
     const unsubscribeAppTheme = subscribeAppThemeSettings(() => {
       setAppTheme(getActiveAppTheme());
     });
@@ -209,6 +239,7 @@ export default function LobbyScreen(): React.ReactElement {
       cancelled = true;
       unsubscribe();
       unsubscribeTurnAlertMode();
+      unsubscribeTutorial();
       unsubscribeAppTheme();
     };
   }, []);
@@ -225,7 +256,7 @@ export default function LobbyScreen(): React.ReactElement {
     }
 
     setSettingsOpen(false);
-    router.replace("/login");
+    router.replace("/");
   }, [router]);
 
   const handleRestrictedGuestAction = React.useCallback(() => {
@@ -275,6 +306,26 @@ export default function LobbyScreen(): React.ReactElement {
     setLowCreditsPromptOpen(false);
     handleWatchRewardedAd();
   }, [handleWatchRewardedAd]);
+
+  const requestQuickMatchBet = React.useCallback(() => {
+    if (maxAffordableBet < 1) {
+      setLowCreditsPromptOpen(true);
+      return;
+    }
+
+    const defaultBet = Math.min(
+      maxAffordableBet,
+      Math.max(1, Math.floor(playerProfile.coins * 0.05)),
+    );
+    setSelectedBet(defaultBet);
+    setCustomBetInput(
+      BET_PRESETS.includes(defaultBet as 1 | 2 | 3 | 4 | 5)
+        ? ""
+        : String(defaultBet),
+    );
+    setBetError(null);
+    setBetModalOpen(true);
+  }, [maxAffordableBet, playerProfile.coins]);
 
   const updateQuickMatchSession = React.useCallback(
     (nextSession: QuickMatchSession) => {
@@ -341,9 +392,11 @@ export default function LobbyScreen(): React.ReactElement {
         mode: "online",
         matchId: quickMatchSession.matchId,
         playerId: quickMatchIdentity.playerId,
+        ...(quickMatchBet !== null ? { bet: String(quickMatchBet) } : {}),
       },
     });
   }, [
+    quickMatchBet,
     quickMatchIdentity?.playerId,
     quickMatchOpen,
     quickMatchSession?.matchId,
@@ -353,17 +406,12 @@ export default function LobbyScreen(): React.ReactElement {
 
   const handleGuestPromptSignIn = React.useCallback(() => {
     setGuestPromptOpen(false);
-    router.replace("/login");
+    router.replace("/");
   }, [router]);
 
-  const handleQuickMatchPress = React.useCallback(async () => {
+  const startQuickMatchFlow = React.useCallback(async () => {
     if (Feature.aiModeOnly.enabled) {
       router.push("/under-construction");
-      return;
-    }
-
-    if (playerProfile.coins < 1) {
-      setLowCreditsPromptOpen(true);
       return;
     }
 
@@ -371,6 +419,7 @@ export default function LobbyScreen(): React.ReactElement {
     setQuickMatchLoading(true);
     setQuickMatchError(null);
     setQuickMatchSession(null);
+    setQuickMatchBet(null);
     setLatestQuickMatchPlayerId(null);
 
     try {
@@ -393,7 +442,45 @@ export default function LobbyScreen(): React.ReactElement {
     } finally {
       setQuickMatchLoading(false);
     }
-  }, [router, updateQuickMatchSession, playerProfile.coins]);
+  }, [router, updateQuickMatchSession]);
+
+  const handleConfirmBet = React.useCallback(async () => {
+    const parsedCustom = Number.parseInt(customBetInput, 10);
+    const resolvedBet = Number.isFinite(parsedCustom)
+      ? parsedCustom
+      : selectedBet;
+
+    if (!Number.isFinite(resolvedBet) || resolvedBet < 1) {
+      setBetError("Enter a valid bet amount.");
+      return;
+    }
+
+    if (resolvedBet > maxAffordableBet) {
+      setBetError("Bet cannot be higher than your current credits.");
+      return;
+    }
+
+    const nextCoins = isGuest
+      ? await spendGuestCredits(resolvedBet)
+      : await spendCurrentUserCoins(resolvedBet);
+
+    if (nextCoins === null) {
+      setBetError("Unable to place bet. Check your credits and try again.");
+      return;
+    }
+
+    setPlayerProfile((prev) => ({ ...prev, coins: nextCoins }));
+    setBetModalOpen(false);
+    setBetError(null);
+
+    await startQuickMatchFlow();
+  }, [
+    customBetInput,
+    isGuest,
+    maxAffordableBet,
+    selectedBet,
+    startQuickMatchFlow,
+  ]);
 
   const handleQuickMatchCancel = React.useCallback(() => {
     const matchId = quickMatchSession?.matchId;
@@ -403,10 +490,12 @@ export default function LobbyScreen(): React.ReactElement {
     setQuickMatchLoading(false);
     setQuickMatchError(null);
     setQuickMatchSession(null);
+    setQuickMatchBet(null);
     setLatestQuickMatchPlayerId(null);
 
     if (matchId && playerId) {
       void leaveQuickMatch(matchId, playerId);
+  setQuickMatchBet(resolvedBet);
     }
   }, [quickMatchIdentity?.playerId, quickMatchSession?.matchId]);
 
@@ -508,7 +597,39 @@ export default function LobbyScreen(): React.ReactElement {
           <Text3D style={styles.storeButtonLabel}>Store</Text3D>
         </TouchableOpacity>
 
-        <Text3D style={styles.title}>7-Card Rummy</Text3D>
+        <View
+          style={styles.titleRow}
+          accessibilityRole="header"
+          accessibilityLabel="7 Card Rummy"
+        >
+          <Text3D style={styles.titleWord}>7</Text3D>
+          <View
+            style={styles.sevenCardsGraphic}
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {TITLE_CARD_GRAPHIC.map((iconName, index) => (
+              <View
+                key={`title-card-${index}`}
+                style={[
+                  styles.titleCardTile,
+                  {
+                    marginLeft: index === 0 ? 0 : -8,
+                    zIndex: TITLE_CARD_GRAPHIC.length - index,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={iconName}
+                  size={12}
+                  color={index % 2 === 0 ? "#f06f78" : "#4f6286"}
+                />
+              </View>
+            ))}
+          </View>
+          <Text3D style={styles.titleWord}>Rummy</Text3D>
+        </View>
         <Text3D style={styles.subtitle}>Choose a mode to start</Text3D>
 
         <View style={styles.profileCard}>
@@ -531,7 +652,6 @@ export default function LobbyScreen(): React.ReactElement {
             </View>
 
             <View style={styles.statItem}>
-              <Text3D style={styles.statLabel}>Credits</Text3D>
               <View style={styles.coinValueRow}>
                 <MaterialCommunityIcons
                   name="diamond-stone"
@@ -572,7 +692,11 @@ export default function LobbyScreen(): React.ReactElement {
             ]}
             activeOpacity={0.85}
             onPress={() => {
-              void handleQuickMatchPress();
+              if (Feature.aiModeOnly.enabled) {
+                router.push("/under-construction");
+                return;
+              }
+              requestQuickMatchBet();
             }}
           >
             <View style={styles.diamondButtonContent}>
@@ -593,13 +717,13 @@ export default function LobbyScreen(): React.ReactElement {
             ]}
             activeOpacity={0.85}
             onPress={() => {
-              if (isGuest) {
-                handleRestrictedGuestAction();
+              if (Feature.aiModeOnly.enabled) {
+                router.push("/under-construction");
                 return;
               }
 
-              if (Feature.aiModeOnly.enabled) {
-                router.push("/under-construction");
+              if (isGuest) {
+                handleRestrictedGuestAction();
                 return;
               }
 
@@ -639,6 +763,12 @@ export default function LobbyScreen(): React.ReactElement {
           <Text3D style={styles.watchAdStatusText}>{rewardStatus}</Text3D>
         ) : null}
       </View>
+
+      <SafeAreaView style={styles.bottomAdSafeArea} edges={["bottom"]}>
+        <View style={styles.bottomAdBannerWrap}>
+          <GoogleAdMobBanner />
+        </View>
+      </SafeAreaView>
 
       <Modal
         visible={settingsOpen}
@@ -682,6 +812,19 @@ export default function LobbyScreen(): React.ReactElement {
                   thumbColor={
                     turnAlertMode === "vibrate" ? "#e9ffe9" : "#f2f2f2"
                   }
+                />
+              </View>
+
+              <View style={styles.optionRow}>
+                <Text3D style={styles.optionLabel}>Enable Tutorial</Text3D>
+                <Switch
+                  value={tutorialEnabled}
+                  onValueChange={(value) => {
+                    setTutorialEnabledState(value);
+                    setTutorialEnabled(value);
+                  }}
+                  trackColor={{ false: "#6b6b6b", true: "#4caf50" }}
+                  thumbColor={tutorialEnabled ? "#e9ffe9" : "#f2f2f2"}
                 />
               </View>
             </View>
@@ -783,6 +926,102 @@ export default function LobbyScreen(): React.ReactElement {
               style={styles.playModeCancelBtn}
               activeOpacity={0.85}
               onPress={() => setPlayModeOpen(false)}
+            >
+              <Text3D style={styles.playModeCancelText}>Cancel</Text3D>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={betModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setBetModalOpen(false);
+          setBetError(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text3D style={[styles.settingsHint, styles.matchLevelHint]}>
+              Match level
+            </Text3D>
+
+            <View style={styles.betPresetRow}>
+              {BET_PRESETS.map((value) => (
+                <TouchableOpacity
+                  key={`bet-${value}`}
+                  activeOpacity={0.85}
+                  style={[
+                    styles.betPresetBtn,
+                    selectedBet === value && styles.betPresetBtnActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedBet(value);
+                    setCustomBetInput("");
+                    setBetError(null);
+                  }}
+                >
+                  <Text3D
+                    style={[
+                      styles.betPresetText,
+                      selectedBet === value && styles.betPresetTextActive,
+                    ]}
+                  >
+                    {value}
+                  </Text3D>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.betCustomInput}
+              placeholder="Custom"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              keyboardType="number-pad"
+              value={customBetInput}
+              onChangeText={(value) => {
+                const digitsOnly = value.replace(/[^0-9]/g, "");
+                setCustomBetInput(digitsOnly);
+                const parsed = Number.parseInt(digitsOnly, 10);
+                if (Number.isFinite(parsed) && parsed > 0) {
+                  setSelectedBet(parsed);
+                }
+                setBetError(null);
+              }}
+              accessibilityLabel="Custom bet amount"
+              accessibilityHint="Enter a custom number of credits"
+            />
+
+            <View style={styles.betBalanceRow}>
+              <MaterialCommunityIcons
+                name="diamond-stone"
+                size={14}
+                color="#f6d43a"
+              />
+              <Text3D style={styles.betBalanceText}>{coinsDisplay}</Text3D>
+            </View>
+
+            {betError ? <Text3D style={styles.quickMatchErrorText}>{betError}</Text3D> : null}
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                void handleConfirmBet();
+              }}
+            >
+              <Text3D style={styles.modalCloseText}>Confirm</Text3D>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.playModeCancelBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setBetModalOpen(false);
+                setBetError(null);
+              }}
             >
               <Text3D style={styles.playModeCancelText}>Cancel</Text3D>
             </TouchableOpacity>
@@ -1035,6 +1274,18 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 20,
   },
+  bottomAdSafeArea: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 14,
+    alignItems: "center",
+  },
+  bottomAdBannerWrap: {
+    paddingBottom: 6,
+    alignItems: "center",
+  },
   topBar: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1121,6 +1372,37 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
     paddingHorizontal: 4,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  titleWord: {
+    color: "#f6d43a",
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textShadowColor: "rgba(8, 15, 30, 0.85)",
+    textShadowOffset: { width: 2, height: 4 },
+    textShadowRadius: 7,
+  },
+  sevenCardsGraphic: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  titleCardTile: {
+    width: 18,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#cadbff",
+    backgroundColor: "#f9fbff",
+    alignItems: "center",
+    justifyContent: "center",
   },
   subtitle: {
     color: "rgba(255,255,255,0.85)",
@@ -1382,6 +1664,59 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
   },
+  betPresetRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  betPresetBtn: {
+    minWidth: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  betPresetBtnActive: {
+    borderColor: "rgba(246,212,58,0.95)",
+    backgroundColor: "rgba(246,212,58,0.16)",
+  },
+  betPresetText: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  betPresetTextActive: {
+    color: "#fdf0b4",
+  },
+  betCustomInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  betBalanceText: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  betBalanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
   quickMatchStatusBox: {
     minHeight: 52,
     borderRadius: 14,
@@ -1469,6 +1804,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 16,
     textAlign: "center",
+  },
+  matchLevelHint: {
+    color: "#f6d43a",
   },
   modalCloseBtn: {
     borderRadius: 16,

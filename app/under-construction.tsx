@@ -6,11 +6,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppThemeBackdrop from "../components/AppThemeBackdrop";
 import Text3D from "../components/Text3D";
 import {
-  appThemeFromShopItem,
-  getActiveAppTheme,
-  initializeAppThemeSettings,
-  setActiveAppTheme,
-  subscribeAppThemeSettings,
+    appThemeFromShopItem,
+    getActiveAppTheme,
+    initializeAppThemeSettings,
+    setActiveAppTheme,
+    subscribeAppThemeSettings,
 } from "../constants/appThemes";
 import { getCurrentUserShopInventoryFromBackend } from "../constants/auth";
 import { Feature } from "../constants/features";
@@ -28,7 +28,7 @@ export default function UnderConstructionScreen(): React.ReactElement {
       return;
     }
 
-    router.replace("/login");
+    router.replace("/");
   }, [router]);
 
   React.useEffect(() => {

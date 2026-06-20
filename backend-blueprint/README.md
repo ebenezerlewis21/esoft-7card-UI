@@ -28,6 +28,7 @@ Files
     - POST /api/auth/login
     - POST /api/auth/refresh
     - POST /api/auth/logout
+    - POST /api/auth/forgot-password
 - java/shop/AuthInterceptor.java + AuthWebConfig.java
   - Enforces Authorization header on protected API routes.
 

@@ -1,4 +1,4 @@
-package com.esoft.sevencardrummy.local
+package com.esoft.sevencardrummy
 
 import android.app.Application
 import android.content.res.Configuration

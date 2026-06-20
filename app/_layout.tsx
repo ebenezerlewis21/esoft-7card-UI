@@ -5,7 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import LaunchIntro from "../components/LaunchIntro";
 import { isAuthenticatedSession } from "../constants/auth";
 
-const PUBLIC_PATHS = new Set(["/", "/login"]);
+const PUBLIC_PATHS = new Set(["/"]);
 
 export default function RootLayout(): React.ReactElement {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function RootLayout(): React.ReactElement {
 
       if (!authenticated) {
         setAuthCheckPending(false);
-        router.replace("/login");
+        router.replace("/");
         return;
       }
 

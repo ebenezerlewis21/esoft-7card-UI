@@ -8,12 +8,6 @@ module.exports = ({ config }) => {
     test: "Test",
     production: "",
   };
-  const envSuffixBySlug = {
-    local: "-local",
-    development: "-dev",
-    test: "-test",
-    production: "",
-  };
   const envSuffixByApplicationId = {
     local: ".local",
     development: ".dev",
@@ -22,10 +16,9 @@ module.exports = ({ config }) => {
   };
 
   const nameSuffix = envSuffixByName[appEnv] ?? "Dev";
-  const slugSuffix = envSuffixBySlug[appEnv] ?? "-dev";
   const applicationIdSuffix = envSuffixByApplicationId[appEnv] ?? ".dev";
   const baseName = (appJson?.name || "7-Card Rummy").trim();
-  const baseSlug = (appJson?.slug || "7card-rummy").trim();
+  const baseSlug = (appJson?.slug || "7card-rummy-dev").trim();
   const baseApplicationId = "com.esoft.sevencardrummy";
   const googleMobileAdsAndroidAppId =
     process.env.EXPO_PUBLIC_GOOGLE_ADMOB_ANDROID_APP_ID ||
@@ -48,7 +41,10 @@ module.exports = ({ config }) => {
     ...(appJson ?? {}),
     ...(config ?? {}),
     name: nameSuffix ? `${baseName} ${nameSuffix}` : baseName,
-    slug: `${baseSlug}${slugSuffix}`,
+    // Slug is the stable EAS project identifier — it must stay constant across
+    // environments and match the slug of the project at extra.eas.projectId.
+    // Environments are differentiated by name and bundle ID, not the slug.
+    slug: baseSlug,
     ios: {
       ...(appJson?.ios ?? {}),
       ...(config?.ios ?? {}),
