@@ -21,10 +21,12 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 Use these scripts to run with dedicated environment files:
 
 - npm run start:dev
-- npm run start:test
+- npm run start:dev:tunnel (use when Expo Go reload/connect is unstable on LAN)
 - npm run start:prod
 
-Each script sets `NODE_ENV` and loads matching values from `.env.development`, `.env.test`, or `.env.production`.
+eas build --platform android --profile development --non-interactive --no-wait
+
+Each script sets `APP_ENV` and `EXPO_PUBLIC_APP_ENV` (plus `NODE_ENV`) so app config and runtime flags resolve to the intended environment.
 
 In the output, you'll find options to open the app in a
 

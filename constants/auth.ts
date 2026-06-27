@@ -61,7 +61,6 @@ const GUEST_CREDITS_KEY = "@auth/guestCredits";
 const GUEST_INITIAL_CREDITS = 2;
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const USER_PROFILES_KEY = "@auth/userProfiles";
-const TEST_PROFILE_NAME = "test";
 
 const DEFAULT_SIGNUP_PROFILE: Omit<UserProfile, "name"> = {
   wins: 0,
@@ -71,25 +70,11 @@ const DEFAULT_SIGNUP_PROFILE: Omit<UserProfile, "name"> = {
   coins: 5,
 };
 
-const DEFAULT_TEST_PROFILE: Omit<UserProfile, "name"> = {
-  wins: 0,
-  gamesPlayed: 0,
-  rank: "Diamond",
-  coins: 100,
-};
-
 let guestSessionActive = false;
 
-const isTestEnvironment = (): boolean =>
-  process.env.EXPO_PUBLIC_APP_ENV === "test";
-
-const getDefaultProfileForName = (name: string): Omit<UserProfile, "name"> => {
-  if (isTestEnvironment() && name === TEST_PROFILE_NAME) {
-    return DEFAULT_TEST_PROFILE;
-  }
-
-  return DEFAULT_SIGNUP_PROFILE;
-};
+const getDefaultProfileForName = (
+  _name: string,
+): Omit<UserProfile, "name"> => DEFAULT_SIGNUP_PROFILE;
 
 const readProfileMap = async (): Promise<UserProfileMap> => {
   try {
@@ -127,25 +112,6 @@ export const ensureUserProfile = async (name: string): Promise<UserProfile> => {
   const defaults = getDefaultProfileForName(trimmedName);
 
   if (existing) {
-    if (isTestEnvironment() && trimmedName === TEST_PROFILE_NAME) {
-      const nextProfile: UserProfile = {
-        ...existing,
-        rank: defaults.rank,
-        coins: defaults.coins,
-      };
-
-      if (
-        nextProfile.rank !== existing.rank ||
-        nextProfile.coins !== existing.coins
-      ) {
-        await writeProfileMap({
-          ...profiles,
-          [trimmedName]: nextProfile,
-        });
-        return nextProfile;
-      }
-    }
-
     return existing;
   }
 
@@ -341,8 +307,8 @@ const writeCurrentUserProfileFromBackend = async (payload: {
 };
 
 export const resolveApiUrl = (path: string): string | null => {
-  const configuredBase = process.env.EXPO_PUBLIC_API_URL?.trim() ?? "";
-  if (!configuredBase) return null;
+  const configuredBase =
+    process.env.EXPO_PUBLIC_API_URL?.trim() || "http://localhost:8080";
 
   const mobileOverride = process.env.EXPO_PUBLIC_API_URL_DEVICE?.trim() ?? "";
   const base =

@@ -4,6 +4,7 @@ import { ActivityIndicator, Animated, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import LaunchIntro from "../components/LaunchIntro";
 import { isAuthenticatedSession } from "../constants/auth";
+import { logPublicEnv } from "../constants/env";
 
 const PUBLIC_PATHS = new Set(["/"]);
 
@@ -15,6 +16,10 @@ export default function RootLayout(): React.ReactElement {
   const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
   const hasMounted = React.useRef(false);
+
+  React.useEffect(() => {
+    logPublicEnv();
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;

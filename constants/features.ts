@@ -1,28 +1,29 @@
-import Constants from "expo-constants";
-
-// Resolve the active environment from the app manifest (baked in by
-// app.config.js for every build), falling back to the public env var. Relying
-// on Constants is more reliable than EXPO_PUBLIC_APP_ENV alone, which is only
-// inlined when the bundler runs in the matching mode.
-const constantsLike = Constants as unknown as {
-  expoConfig?: { extra?: { appEnv?: string } };
+// Parse a boolean feature flag from its raw env string. Anything other than a
+// truthy token ("true"/"1"/"yes"/"on", case-insensitive) resolves to false, so
+// unset or malformed values default to disabled.
+const flagEnabled = (raw: string | undefined): boolean => {
+  const value = raw?.trim().toLowerCase() ?? "";
+  return value === "true" || value === "1" || value === "yes" || value === "on";
 };
 
-const appEnv =
-  constantsLike.expoConfig?.extra?.appEnv ??
-  process.env.EXPO_PUBLIC_APP_ENV ??
-  "";
-
-const isProduction = appEnv === "production";
-
+// NOTE: Expo only inlines statically-referenced `process.env.EXPO_PUBLIC_*`
+// values into the bundle, so each flag must be read by its literal name.
 export const Feature = {
-  aiModeOnly: {
-    // AI-only mode is enabled in production; other environments keep full access.
-    enabled: isProduction,
+  multiMode: {
+    // When enabled, multiplayer modes (Quick Match, friend matches) are
+    // available. When disabled, those routes show the under-construction
+    // screen (AI-only experience). Defaults to false.
+    enabled: flagEnabled(process.env.EXPO_PUBLIC_FEATURE_MULTI_MODE),
   },
-  disableAuth: {
-    // In production the login page hides Sign In / Sign Up and only offers
-    // "Continue as Guest". Other environments keep full email/password auth.
-    enabled: isProduction,
+  enableAuth: {
+    // When enabled, the login page shows full email/password auth (Sign In /
+    // Sign Up). When disabled, it only offers "Continue as Guest". Defaults to
+    // false.
+    enabled: flagEnabled(process.env.EXPO_PUBLIC_FEATURE_ENABLE_AUTH),
+  },
+  thirdPartyAuth: {
+    // When enabled, the login page shows third-party (social) auth options.
+    // Defaults to false.
+    enabled: flagEnabled(process.env.EXPO_PUBLIC_FEATURE_THIRD_PARTY_AUTH),
   },
 } as const;

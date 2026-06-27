@@ -1,17 +1,13 @@
 const { expo: appJson } = require("./app.json");
 
 module.exports = ({ config }) => {
-  const appEnv = process.env.APP_ENV || process.env.NODE_ENV || "local";
+  const appEnv = process.env.APP_ENV || process.env.NODE_ENV || "development";
   const envSuffixByName = {
-    local: "Local",
     development: "Dev",
-    test: "Test",
     production: "",
   };
   const envSuffixByApplicationId = {
-    local: ".local",
     development: ".dev",
-    test: ".test",
     production: "",
   };
 

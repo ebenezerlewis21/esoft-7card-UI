@@ -18,9 +18,9 @@ import { Feature } from "../constants/features";
 export default function UnderConstructionScreen(): React.ReactElement {
   const router = useRouter();
   const [appTheme, setAppTheme] = React.useState(getActiveAppTheme());
-  const title = Feature.aiModeOnly.enabled
-    ? "Coming Soon"
-    : "Under Construction";
+  const title = Feature.multiMode.enabled
+    ? "Under Construction"
+    : "Coming Soon";
 
   const handleGoBack = React.useCallback(() => {
     if (router.canGoBack()) {

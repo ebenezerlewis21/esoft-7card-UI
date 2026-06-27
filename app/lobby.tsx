@@ -410,7 +410,7 @@ export default function LobbyScreen(): React.ReactElement {
   }, [router]);
 
   const startQuickMatchFlow = React.useCallback(async () => {
-    if (Feature.aiModeOnly.enabled) {
+    if (!Feature.multiMode.enabled) {
       router.push("/under-construction");
       return;
     }
@@ -692,7 +692,7 @@ export default function LobbyScreen(): React.ReactElement {
             ]}
             activeOpacity={0.85}
             onPress={() => {
-              if (Feature.aiModeOnly.enabled) {
+              if (!Feature.multiMode.enabled) {
                 router.push("/under-construction");
                 return;
               }
@@ -717,7 +717,7 @@ export default function LobbyScreen(): React.ReactElement {
             ]}
             activeOpacity={0.85}
             onPress={() => {
-              if (Feature.aiModeOnly.enabled) {
+              if (!Feature.multiMode.enabled) {
                 router.push("/under-construction");
                 return;
               }

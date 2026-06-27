@@ -33,6 +33,7 @@ import {
     setCurrentName,
     setGuestSession,
 } from "../constants/auth";
+import { Feature } from "../constants/features";
 
 type ThirdPartyProvider = "google" | "apple" | "facebook";
 
@@ -42,7 +43,6 @@ const THIRD_PARTY_AUTH_URLS: Record<ThirdPartyProvider, string> = {
   facebook: "https://www.facebook.com/login",
 };
 
-const TEST_ACCOUNTS_KEY = "@auth/testAccounts";
 const SAVED_LOGIN_KEY = "@auth/savedLogin";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SIGNUP_PASSWORD_PATTERN = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{7,}$/;
@@ -187,11 +187,9 @@ const TITLE_CARD_GRAPHIC: CardIconName[] = [
 export default function HomeScreen(): React.ReactElement {
   const router = useRouter();
   const { height: viewportHeight } = useWindowDimensions();
-  const appEnv = process.env.EXPO_PUBLIC_APP_ENV ?? "";
-  const isTestEnvironment = appEnv === "test";
-  const isBackendAuthEnvironment =
-    appEnv === "local" || appEnv === "production";
-  const backendEnvLabel = appEnv === "production" ? "production" : "local";
+  const appEnv = process.env.EXPO_PUBLIC_APP_ENV?.trim() ?? "";
+  const isBackendAuthEnvironment = Feature.enableAuth.enabled;
+  const backendEnvLabel = appEnv || "current";
   const devLoginPath =
     process.env.EXPO_PUBLIC_DEV_LOGIN_PATH ?? "api/auth/login";
   const devSignupPath =
@@ -199,7 +197,6 @@ export default function HomeScreen(): React.ReactElement {
   const devForgotPasswordPath =
     process.env.EXPO_PUBLIC_DEV_FORGOT_PASSWORD_PATH ??
     "api/auth/forgot-password";
-  const thirdPartyAuth = false;
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -487,56 +484,6 @@ export default function HomeScreen(): React.ReactElement {
         }
       }
 
-      if (isTestEnvironment) {
-        let testAccounts: Record<string, string> = {};
-
-        try {
-          const raw = await AsyncStorage.getItem(TEST_ACCOUNTS_KEY);
-          if (raw) {
-            testAccounts = JSON.parse(raw) as Record<string, string>;
-          }
-        } catch {
-          setErrorMessage("Unable to load test accounts.");
-          return;
-        }
-
-        if (testAccounts[trimmedEmail] !== password) {
-          setErrorMessage(
-            "Invalid login for test environment. Please sign up first.",
-          );
-          return;
-        }
-
-        const resolvedName = trimmedEmail.split("@")[0] || trimmedEmail;
-
-        try {
-          await clearAuthCredential();
-          await clearGuestSession();
-
-          if (rememberMe) {
-            await AsyncStorage.setItem(
-              SAVED_LOGIN_KEY,
-              JSON.stringify({
-                email: trimmedEmail,
-                name: resolvedName,
-                rememberMe: true,
-              }),
-            );
-          } else {
-            await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
-          }
-
-          await ensureUserProfile(resolvedName);
-          await setCurrentEmail(trimmedEmail);
-          await setCurrentName(resolvedName);
-        } catch {
-          // Ignore local storage errors and continue auth flow.
-        }
-
-        router.replace("/lobby");
-        return;
-      }
-
       setErrorMessage("Authentication is unavailable in this environment.");
     } finally {
       setIsBusy(false);
@@ -547,7 +494,6 @@ export default function HomeScreen(): React.ReactElement {
     email,
     isActionBusy,
     isBackendAuthEnvironment,
-    isTestEnvironment,
     password,
     rememberMe,
     router,
@@ -787,36 +733,6 @@ export default function HomeScreen(): React.ReactElement {
         }
       }
 
-      if (isTestEnvironment) {
-        let testAccounts: Record<string, string> = {};
-
-        try {
-          const raw = await AsyncStorage.getItem(TEST_ACCOUNTS_KEY);
-          if (raw) {
-            testAccounts = JSON.parse(raw) as Record<string, string>;
-          }
-        } catch {
-          setSignupErrorMessage("Unable to load test accounts.");
-          return;
-        }
-
-        if (testAccounts[trimmedEmail]) {
-          setSignupEmailError("Email already exists in test environment.");
-          return;
-        }
-
-        try {
-          const nextAccounts = {
-            ...testAccounts,
-            [trimmedEmail]: signupPassword,
-          };
-          await AsyncStorage.setItem(TEST_ACCOUNTS_KEY, JSON.stringify(nextAccounts));
-        } catch {
-          setSignupErrorMessage("Unable to create test account.");
-          return;
-        }
-      }
-
       setShowSignupModal(false);
       setSignupName("");
       setSignupEmail("");
@@ -836,7 +752,6 @@ export default function HomeScreen(): React.ReactElement {
     devSignupPath,
     isBackendAuthEnvironment,
     isSignupSubmitting,
-    isTestEnvironment,
     signupConfirmPassword,
     signupEmail,
     signupName,
@@ -936,226 +851,230 @@ export default function HomeScreen(): React.ReactElement {
 
             <View style={styles.actions}>
               <View style={styles.card}>
-                <Text3D style={styles.loginFormTitle} animate={false}>
-                  Login
-                </Text3D>
+                {Feature.enableAuth.enabled ? (
+                  <>
+                    <Text3D style={styles.loginFormTitle} animate={false}>
+                      Login
+                    </Text3D>
 
-            <View style={styles.fieldGroup}>
-              <Text3D style={styles.fieldLabel} animate={false}>
-                Email
-              </Text3D>
-              <TextInput
-                value={email}
-                onChangeText={(value) => {
-                  setEmail(value);
-                  setLoginEmailError(null);
-                }}
-                placeholder="Enter your email"
-                placeholderTextColor="#8f8f9d"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                autoComplete="email"
-                textContentType="emailAddress"
-                returnKeyType="next"
-                accessibilityLabel="Email"
-                accessibilityHint="Enter your email address"
-                style={styles.input}
-              />
-              {loginEmailError ? (
-                <Text3D style={styles.fieldErrorText} animate={false}>
-                  {loginEmailError}
-                </Text3D>
-              ) : null}
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text3D style={styles.fieldLabel} animate={false}>
-                Password
-              </Text3D>
-              <View style={styles.passwordRow}>
-                <TextInput
-                  value={password}
-                  onChangeText={(value) => {
-                    setPassword(value);
-                    setLoginPasswordError(null);
-                  }}
-                  placeholder="Enter your password"
-                  placeholderTextColor="#8f8f9d"
-                  secureTextEntry={!passwordVisible}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="current-password"
-                  textContentType="password"
-                  returnKeyType="done"
-                  accessibilityLabel="Password"
-                  accessibilityHint="Enter your password"
-                  style={styles.passwordInput}
-                />
-                <Pressable
-                  style={styles.eyeButton}
-                  onPress={() => setPasswordVisible((value) => !value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    passwordVisible ? "Hide password" : "Show password"
-                  }
-                  accessibilityHint="Toggles password visibility"
-                >
-                  <MaterialCommunityIcons
-                    name={passwordVisible ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color="#dde5ff"
-                  />
-                </Pressable>
-              </View>
-              {loginPasswordError ? (
-                <Text3D style={styles.fieldErrorText} animate={false}>
-                  {loginPasswordError}
-                </Text3D>
-              ) : null}
-            </View>
-
-            <View style={styles.signInAssistRow}>
-              <Pressable
-                style={styles.rememberMeButton}
-                onPress={() => setRememberMe((value) => !value)}
-                disabled={isActionBusy}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: rememberMe, disabled: isActionBusy }}
-                accessibilityLabel="Remember me"
-                accessibilityHint="Saves your login on this device"
-              >
-                <MaterialCommunityIcons
-                  name={
-                    rememberMe
-                      ? "checkbox-marked-outline"
-                      : "checkbox-blank-outline"
-                  }
-                  size={18}
-                  color={rememberMe ? "#8fb7ff" : "#7a88a8"}
-                />
-                <Text3D style={styles.rememberMeText} animate={false}>
-                  Remember me
-                </Text3D>
-              </Pressable>
-
-              <Pressable
-                onPress={handleForgotPassword}
-                disabled={isActionBusy}
-                accessibilityRole="button"
-                accessibilityLabel="Forgot password"
-                accessibilityHint="Opens password recovery information"
-                accessibilityState={{ disabled: isActionBusy }}
-              >
-                <Text3D style={styles.forgotPasswordText} animate={false}>
-                  Forgot password?
-                </Text3D>
-              </Pressable>
-            </View>
-
-            <Pressable
-              style={[
-                styles.primaryButton,
-                isActionBusy ? styles.buttonDisabled : null,
-              ]}
-              onPress={() => {
-                void handleLoginSubmit();
-              }}
-              disabled={isActionBusy}
-              accessibilityRole="button"
-              accessibilityLabel="Login"
-              accessibilityHint="Authenticates and opens the lobby"
-              accessibilityState={{ disabled: isActionBusy }}
-            >
-              <Text3D style={styles.primaryButtonText} animate={false}>
-                Login
-              </Text3D>
-            </Pressable>
-
-            {thirdPartyAuth ? (
-              <View style={styles.socialSection}>
-                <View style={styles.socialInlineRow}>
-                  <Text3D style={styles.socialLabel} animate={false}>
-                    Or sign in with
-                  </Text3D>
-
-                  <View style={styles.socialRow}>
-                    <Pressable
-                      style={[
-                        styles.socialIconButton,
-                        thirdPartyLoading === "google" ? styles.socialButtonBusy : null,
-                      ]}
-                      onPress={() => {
-                        void handleThirdPartyAuth("google");
-                      }}
-                      disabled={isActionBusy}
-                      accessibilityRole="button"
-                      accessibilityLabel="Continue with Google"
-                      accessibilityHint="Opens Google sign in"
-                      accessibilityState={{ disabled: isActionBusy }}
-                    >
-                      <MaterialCommunityIcons name="google" size={22} color="#d14c3c" />
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.socialIconButton,
-                        thirdPartyLoading === "apple" ? styles.socialButtonBusy : null,
-                      ]}
-                      onPress={() => {
-                        void handleThirdPartyAuth("apple");
-                      }}
-                      disabled={isActionBusy}
-                      accessibilityRole="button"
-                      accessibilityLabel="Continue with Apple"
-                      accessibilityHint="Opens Apple sign in"
-                      accessibilityState={{ disabled: isActionBusy }}
-                    >
-                      <MaterialCommunityIcons name="apple" size={22} color="#ffffff" />
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.socialIconButton,
-                        thirdPartyLoading === "facebook" ? styles.socialButtonBusy : null,
-                      ]}
-                      onPress={() => {
-                        void handleThirdPartyAuth("facebook");
-                      }}
-                      disabled={isActionBusy}
-                      accessibilityRole="button"
-                      accessibilityLabel="Continue with Facebook"
-                      accessibilityHint="Opens Facebook sign in"
-                      accessibilityState={{ disabled: isActionBusy }}
-                    >
-                      <MaterialCommunityIcons
-                        name="facebook"
-                        size={22}
-                        color="#2454bf"
+                    <View style={styles.fieldGroup}>
+                      <Text3D style={styles.fieldLabel} animate={false}>
+                        Email
+                      </Text3D>
+                      <TextInput
+                        value={email}
+                        onChangeText={(value) => {
+                          setEmail(value);
+                          setLoginEmailError(null);
+                        }}
+                        placeholder="Enter your email"
+                        placeholderTextColor="#8f8f9d"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="email-address"
+                        autoComplete="email"
+                        textContentType="emailAddress"
+                        returnKeyType="next"
+                        accessibilityLabel="Email"
+                        accessibilityHint="Enter your email address"
+                        style={styles.input}
                       />
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            ) : null}
+                      {loginEmailError ? (
+                        <Text3D style={styles.fieldErrorText} animate={false}>
+                          {loginEmailError}
+                        </Text3D>
+                      ) : null}
+                    </View>
 
-            <View style={styles.registerRow}>
-              <Text3D style={styles.registerPromptText} animate={false}>
-                Don&apos;t have an account?
-              </Text3D>
-              <Pressable
-                onPress={handleOpenSignupModal}
-                disabled={isActionBusy}
-                accessibilityRole="link"
-                accessibilityLabel="Register"
-                accessibilityHint="Opens create account form"
-                accessibilityState={{ disabled: isActionBusy }}
-              >
-                <Text3D style={styles.registerLinkText} animate={false}>
-                  Register
-                </Text3D>
-              </Pressable>
-            </View>
+                    <View style={styles.fieldGroup}>
+                      <Text3D style={styles.fieldLabel} animate={false}>
+                        Password
+                      </Text3D>
+                      <View style={styles.passwordRow}>
+                        <TextInput
+                          value={password}
+                          onChangeText={(value) => {
+                            setPassword(value);
+                            setLoginPasswordError(null);
+                          }}
+                          placeholder="Enter your password"
+                          placeholderTextColor="#8f8f9d"
+                          secureTextEntry={!passwordVisible}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          autoComplete="current-password"
+                          textContentType="password"
+                          returnKeyType="done"
+                          accessibilityLabel="Password"
+                          accessibilityHint="Enter your password"
+                          style={styles.passwordInput}
+                        />
+                        <Pressable
+                          style={styles.eyeButton}
+                          onPress={() => setPasswordVisible((value) => !value)}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            passwordVisible ? "Hide password" : "Show password"
+                          }
+                          accessibilityHint="Toggles password visibility"
+                        >
+                          <MaterialCommunityIcons
+                            name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+                            size={20}
+                            color="#dde5ff"
+                          />
+                        </Pressable>
+                      </View>
+                      {loginPasswordError ? (
+                        <Text3D style={styles.fieldErrorText} animate={false}>
+                          {loginPasswordError}
+                        </Text3D>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.signInAssistRow}>
+                      <Pressable
+                        style={styles.rememberMeButton}
+                        onPress={() => setRememberMe((value) => !value)}
+                        disabled={isActionBusy}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: rememberMe, disabled: isActionBusy }}
+                        accessibilityLabel="Remember me"
+                        accessibilityHint="Saves your login on this device"
+                      >
+                        <MaterialCommunityIcons
+                          name={
+                            rememberMe
+                              ? "checkbox-marked-outline"
+                              : "checkbox-blank-outline"
+                          }
+                          size={18}
+                          color={rememberMe ? "#8fb7ff" : "#7a88a8"}
+                        />
+                        <Text3D style={styles.rememberMeText} animate={false}>
+                          Remember me
+                        </Text3D>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={handleForgotPassword}
+                        disabled={isActionBusy}
+                        accessibilityRole="button"
+                        accessibilityLabel="Forgot password"
+                        accessibilityHint="Opens password recovery information"
+                        accessibilityState={{ disabled: isActionBusy }}
+                      >
+                        <Text3D style={styles.forgotPasswordText} animate={false}>
+                          Forgot password?
+                        </Text3D>
+                      </Pressable>
+                    </View>
+
+                    <Pressable
+                      style={[
+                        styles.primaryButton,
+                        isActionBusy ? styles.buttonDisabled : null,
+                      ]}
+                      onPress={() => {
+                        void handleLoginSubmit();
+                      }}
+                      disabled={isActionBusy}
+                      accessibilityRole="button"
+                      accessibilityLabel="Login"
+                      accessibilityHint="Authenticates and opens the lobby"
+                      accessibilityState={{ disabled: isActionBusy }}
+                    >
+                      <Text3D style={styles.primaryButtonText} animate={false}>
+                        Login
+                      </Text3D>
+                    </Pressable>
+
+                    {Feature.thirdPartyAuth.enabled ? (
+                      <View style={styles.socialSection}>
+                        <View style={styles.socialInlineRow}>
+                          <Text3D style={styles.socialLabel} animate={false}>
+                            Or sign in with
+                          </Text3D>
+
+                          <View style={styles.socialRow}>
+                            <Pressable
+                              style={[
+                                styles.socialIconButton,
+                                thirdPartyLoading === "google" ? styles.socialButtonBusy : null,
+                              ]}
+                              onPress={() => {
+                                void handleThirdPartyAuth("google");
+                              }}
+                              disabled={isActionBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel="Continue with Google"
+                              accessibilityHint="Opens Google sign in"
+                              accessibilityState={{ disabled: isActionBusy }}
+                            >
+                              <MaterialCommunityIcons name="google" size={22} color="#d14c3c" />
+                            </Pressable>
+
+                            <Pressable
+                              style={[
+                                styles.socialIconButton,
+                                thirdPartyLoading === "apple" ? styles.socialButtonBusy : null,
+                              ]}
+                              onPress={() => {
+                                void handleThirdPartyAuth("apple");
+                              }}
+                              disabled={isActionBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel="Continue with Apple"
+                              accessibilityHint="Opens Apple sign in"
+                              accessibilityState={{ disabled: isActionBusy }}
+                            >
+                              <MaterialCommunityIcons name="apple" size={22} color="#ffffff" />
+                            </Pressable>
+
+                            <Pressable
+                              style={[
+                                styles.socialIconButton,
+                                thirdPartyLoading === "facebook" ? styles.socialButtonBusy : null,
+                              ]}
+                              onPress={() => {
+                                void handleThirdPartyAuth("facebook");
+                              }}
+                              disabled={isActionBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel="Continue with Facebook"
+                              accessibilityHint="Opens Facebook sign in"
+                              accessibilityState={{ disabled: isActionBusy }}
+                            >
+                              <MaterialCommunityIcons
+                                name="facebook"
+                                size={22}
+                                color="#2454bf"
+                              />
+                            </Pressable>
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    <View style={styles.registerRow}>
+                      <Text3D style={styles.registerPromptText} animate={false}>
+                        Don&apos;t have an account?
+                      </Text3D>
+                      <Pressable
+                        onPress={handleOpenSignupModal}
+                        disabled={isActionBusy}
+                        accessibilityRole="link"
+                        accessibilityLabel="Register"
+                        accessibilityHint="Opens create account form"
+                        accessibilityState={{ disabled: isActionBusy }}
+                      >
+                        <Text3D style={styles.registerLinkText} animate={false}>
+                          Register
+                        </Text3D>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : null}
 
             <Pressable
               style={[

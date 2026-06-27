@@ -1,13 +1,13 @@
+import type { Card, DiscardSource, GamePhase, Rank, Suit } from "@/game/logic";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import {
-  fetchWithAuth,
-  getCurrentEmail,
-  getCurrentUserProfile,
-  type UserProfile,
+    fetchWithAuth,
+    getCurrentEmail,
+    getCurrentUserProfile,
+    type UserProfile,
 } from "./auth";
-import type { Card, DiscardSource, GamePhase, Rank, Suit } from "@/game/logic";
 
 export type QuickMatchPlayer = {
   playerId: string;
@@ -67,8 +67,8 @@ export type QuickMatchAction =
 const QUICK_MATCH_PLAYER_ID_KEY = "@multiplayer/quickMatchPlayerId";
 
 const resolveApiUrl = (path: string): string | null => {
-  const configuredBase = process.env.EXPO_PUBLIC_API_URL?.trim() ?? "";
-  if (!configuredBase) return null;
+  const configuredBase =
+    process.env.EXPO_PUBLIC_API_URL?.trim() || "http://localhost:8080";
 
   const mobileOverride = process.env.EXPO_PUBLIC_API_URL_DEVICE?.trim() ?? "";
   const base =
