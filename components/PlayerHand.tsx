@@ -1,13 +1,13 @@
 import { findZeroCards, type Player } from "@/game/logic";
 import React, { useCallback, useRef, useState } from "react";
 import {
-    Animated,
-    PanResponder,
-    ScrollView,
-    StyleProp,
-    StyleSheet,
-    View,
-    ViewStyle,
+  Animated,
+  PanResponder,
+  ScrollView,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
 } from "react-native";
 import Card from "./Card";
 import Text3D from "./Text3D";

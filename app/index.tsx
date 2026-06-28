@@ -3,35 +3,35 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    Animated,
-    KeyboardAvoidingView,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GoogleAdMobBanner from "../components/GoogleAdMobBanner";
 import Text3D from "../components/Text3D";
 import {
-    type AuthCredential,
-    clearAuthCredential,
-    clearCurrentEmail,
-    clearCurrentName,
-    clearGuestSession,
-    ensureUserProfile,
-    isGuestSession,
-    resolveApiUrl,
-    setAuthCredential,
-    setCurrentEmail,
-    setCurrentName,
-    setGuestSession,
+  type AuthCredential,
+  clearAuthCredential,
+  clearCurrentEmail,
+  clearCurrentName,
+  clearGuestSession,
+  ensureUserProfile,
+  isGuestSession,
+  resolveApiUrl,
+  setAuthCredential,
+  setCurrentEmail,
+  setCurrentName,
+  setGuestSession,
 } from "../constants/auth";
 
 type ThirdPartyProvider = "google" | "apple" | "facebook";
