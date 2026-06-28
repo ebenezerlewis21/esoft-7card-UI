@@ -1,13 +1,13 @@
 import { findZeroCards, type Player } from "@/game/logic";
 import React, { useCallback, useRef, useState } from "react";
 import {
-  Animated,
-  PanResponder,
-  ScrollView,
-  StyleProp,
-  StyleSheet,
-  View,
-  ViewStyle,
+    Animated,
+    PanResponder,
+    ScrollView,
+    StyleProp,
+    StyleSheet,
+    View,
+    ViewStyle,
 } from "react-native";
 import Card from "./Card";
 import Text3D from "./Text3D";
@@ -35,6 +35,7 @@ type PlayerHandProps = {
   score: number;
   gameOver?: boolean;
   compact?: boolean;
+  tightCompact?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   cardBackColor?: string;
   showThinking?: boolean;
@@ -58,6 +59,7 @@ export default function PlayerHand({
   score,
   gameOver = false,
   compact = false,
+  tightCompact = false,
   containerStyle,
   cardBackColor = "#1a3a8f",
   showThinking = true,
@@ -84,8 +86,9 @@ export default function PlayerHand({
   const canSelect = isHuman && phase === "drawn" && !gameOver;
   const canReorder =
     isHuman && phase === "action" && !gameOver && isCurrentTurn;
+  const isTightCompact = compact && tightCompact;
   const cardSize: "normal" | "small" = compact ? "small" : "normal";
-  const stackedCardOverlap = compact ? -22 : -28;
+  const stackedCardOverlap = isTightCompact ? -25 : compact ? -22 : -28;
   const isMatchPointDanger = matchPointActive && wins === 0;
   const lastTapRef = useRef<{ idx: number | null; time: number }>({
     idx: null,
@@ -268,6 +271,14 @@ export default function PlayerHand({
                 )}
               </View>
             )}
+            {isHuman && (
+              <View style={styles.legend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.comboLegendDot]} />
+                  <Text3D style={styles.legendText}>Zero-value combo</Text3D>
+                </View>
+              </View>
+            )}
           </View>
           <ScrollView
             style={styles.humanCardsScroll}
@@ -434,6 +445,7 @@ export default function PlayerHand({
             style={[
               styles.cardStackContainer,
               compact && styles.compactCardStackContainer,
+              isTightCompact && styles.tightCompactCardStackContainer,
             ]}
           >
             <View
@@ -446,13 +458,15 @@ export default function PlayerHand({
               {Array.from({ length: 7 }).map((_, i) => {
                 const centerIndex = 3;
                 const distanceFromCenter = Math.abs(i - centerIndex);
-                const arcTranslateY = compact
+                const arcTranslateY = isTightCompact
+                  ? distanceFromCenter * -3
+                  : compact
                   ? distanceFromCenter * -4
                   : distanceFromCenter * -6;
-                const arcRotate = (centerIndex - i) * (compact ? 7 : 9);
+                const arcRotate = (centerIndex - i) * (isTightCompact ? 5 : compact ? 7 : 9);
                 const arcScale = Math.max(
-                  compact ? 0.88 : 0.9,
-                  1 - distanceFromCenter * (compact ? 0.035 : 0.03),
+                  isTightCompact ? 0.84 : compact ? 0.88 : 0.9,
+                  1 - distanceFromCenter * (isTightCompact ? 0.04 : compact ? 0.035 : 0.03),
                 );
 
                 return (
@@ -472,8 +486,8 @@ export default function PlayerHand({
                       faceDown
                       cardBackColor={cardBackColor}
                       size={cardSize}
-                      cardWidth={compact ? 28 : 40}
-                      cardHeight={compact ? 40 : 56}
+                      cardWidth={isTightCompact ? 24 : compact ? 28 : 40}
+                      cardHeight={isTightCompact ? 34 : compact ? 40 : 56}
                     />
                   </View>
                 );
@@ -650,6 +664,27 @@ const styles = StyleSheet.create({
     maxWidth: 140,
     justifyContent: "flex-start",
   },
+  legend: {
+    marginTop: 4,
+    gap: 3,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  comboLegendDot: {
+    backgroundColor: "#4ae",
+  },
+  legendText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 10,
+  },
   humanInfoShifted: {
     marginTop: 20,
   },
@@ -684,6 +719,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     zIndex: 0,
     elevation: 0,
+  },
+  tightCompactCardStackContainer: {
+    marginTop: 0,
   },
   cardStack: {
     flexDirection: "row",

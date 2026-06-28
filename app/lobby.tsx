@@ -11,6 +11,7 @@ import {
     Switch,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -27,7 +28,7 @@ import {
     subscribeAppThemeSettings,
 } from "../constants/appThemes";
 import {
-    awardCurrentUserCredits,
+    awardCurrentUserAdCredits,
     awardGuestCredits,
     clearAuthCredential,
     clearCurrentEmail,
@@ -91,6 +92,26 @@ const TITLE_CARD_GRAPHIC = [
 
 export default function LobbyScreen(): React.ReactElement {
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+
+  // The four game-mode buttons are diamonds (108px squares rotated 45deg) laid
+  // out around a square "orbit". A rotated square's corners overhang its box by
+  // ~0.207x its side, so the cluster's horizontal span is orbit + 0.414*diamond.
+  // Size the orbit from the panel's real inner width so the side diamonds never
+  // spill past the panel borders on devices where the panel is narrower than
+  // its 420px cap.
+  const orbitSize = React.useMemo(() => {
+    const ORBIT_PADDING = 20; // container padding (lobby `container`)
+    const PANEL_PADDING = 24; // `panel` paddingHorizontal
+    const panelOuter = Math.min(420, windowWidth - ORBIT_PADDING * 2);
+    const panelInner = panelOuter - PANEL_PADDING * 2;
+    // diamond = 0.36 * orbit (108/300), so span = orbit * (1 + 0.414 * 0.36).
+    const maxOrbit = (panelInner - 12) / 1.149;
+    return Math.max(220, Math.min(300, maxOrbit));
+  }, [windowWidth]);
+  const diamondSize = orbitSize * 0.36;
+  const diamondHalf = diamondSize / 2;
+  const diamondContentWidth = diamondSize - 22;
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [playModeOpen, setPlayModeOpen] = React.useState(false);
   const [guestPromptOpen, setGuestPromptOpen] = React.useState(false);
@@ -287,7 +308,7 @@ export default function LobbyScreen(): React.ReactElement {
           // Guests have no backend profile, so credit their local balance.
           const nextCoins = isGuest
             ? await awardGuestCredits(REWARD_CREDIT_AMOUNT)
-            : await awardCurrentUserCredits(REWARD_CREDIT_AMOUNT);
+            : await awardCurrentUserAdCredits(REWARD_CREDIT_AMOUNT);
           if (nextCoins === null) {
             setRewardStatus("Could not add reward credit. Please try again.");
             return;
@@ -415,6 +436,11 @@ export default function LobbyScreen(): React.ReactElement {
       return;
     }
 
+    if (isGuest) {
+      handleRestrictedGuestAction();
+      return;
+    }
+
     setQuickMatchOpen(true);
     setQuickMatchLoading(true);
     setQuickMatchError(null);
@@ -442,7 +468,7 @@ export default function LobbyScreen(): React.ReactElement {
     } finally {
       setQuickMatchLoading(false);
     }
-  }, [router, updateQuickMatchSession]);
+  }, [handleRestrictedGuestAction, isGuest, router, updateQuickMatchSession]);
 
   const handleConfirmBet = React.useCallback(async () => {
     const parsedCustom = Number.parseInt(customBetInput, 10);
@@ -495,7 +521,6 @@ export default function LobbyScreen(): React.ReactElement {
 
     if (matchId && playerId) {
       void leaveQuickMatch(matchId, playerId);
-  setQuickMatchBet(resolvedBet);
     }
   }, [quickMatchIdentity?.playerId, quickMatchSession?.matchId]);
 
@@ -667,16 +692,32 @@ export default function LobbyScreen(): React.ReactElement {
           </View>
         </View>
 
-        <View style={styles.actionsOrbit}>
+        <View
+          style={[
+            styles.actionsOrbit,
+            { width: orbitSize, height: orbitSize },
+          ]}
+        >
           <TouchableOpacity
-            style={[styles.diamondButton, styles.playButton, styles.actionTop]}
+            style={[
+              styles.diamondButton,
+              { width: diamondSize, height: diamondSize },
+              styles.playButton,
+              styles.actionTop,
+              { marginLeft: -diamondHalf },
+            ]}
             activeOpacity={0.85}
             onPress={() => {
               setSelectedAiDifficulty(getAiDifficulty());
               setPlayModeOpen(true);
             }}
           >
-            <View style={styles.diamondButtonContent}>
+            <View
+              style={[
+                styles.diamondButtonContent,
+                { width: diamondContentWidth },
+              ]}
+            >
               <Text3D style={[styles.diamondButtonText, styles.playButtonText]}>
                 Play vs Computer
               </Text3D>
@@ -686,8 +727,11 @@ export default function LobbyScreen(): React.ReactElement {
           <TouchableOpacity
             style={[
               styles.diamondButton,
+              { width: diamondSize, height: diamondSize },
               styles.onlineButton,
               styles.actionRight,
+              { marginTop: -diamondHalf },
+              isGuest && styles.disabledDiamondButton,
               playerProfile.coins < 1 && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
@@ -696,10 +740,21 @@ export default function LobbyScreen(): React.ReactElement {
                 router.push("/under-construction");
                 return;
               }
+
+              if (isGuest) {
+                handleRestrictedGuestAction();
+                return;
+              }
+
               requestQuickMatchBet();
             }}
           >
-            <View style={styles.diamondButtonContent}>
+            <View
+              style={[
+                styles.diamondButtonContent,
+                { width: diamondContentWidth },
+              ]}
+            >
               <Text3D
                 style={[styles.diamondButtonText, styles.onlineButtonText]}
               >
@@ -711,8 +766,10 @@ export default function LobbyScreen(): React.ReactElement {
           <TouchableOpacity
             style={[
               styles.diamondButton,
+              { width: diamondSize, height: diamondSize },
               styles.friendButton,
               styles.actionBottom,
+              { marginLeft: -diamondHalf },
               isGuest && styles.disabledDiamondButton,
             ]}
             activeOpacity={0.85}
@@ -730,7 +787,12 @@ export default function LobbyScreen(): React.ReactElement {
               router.push("/under-construction");
             }}
           >
-            <View style={styles.diamondButtonContent}>
+            <View
+              style={[
+                styles.diamondButtonContent,
+                { width: diamondContentWidth },
+              ]}
+            >
               <Text3D
                 style={[styles.diamondButtonText, styles.friendButtonText]}
               >
@@ -742,15 +804,22 @@ export default function LobbyScreen(): React.ReactElement {
           <TouchableOpacity
             style={[
               styles.diamondButton,
+              { width: diamondSize, height: diamondSize },
               styles.watchAdButton,
               styles.actionLeft,
+              { marginTop: -diamondHalf },
             ]}
             activeOpacity={0.85}
             onPress={handleWatchRewardedAd}
             accessibilityRole="button"
             accessibilityLabel="Watch ad to gain credits"
           >
-            <View style={styles.diamondButtonContent}>
+            <View
+              style={[
+                styles.diamondButtonContent,
+                { width: diamondContentWidth },
+              ]}
+            >
               <Text3D
                 style={[styles.diamondButtonText, styles.watchAdButtonText]}
               >
@@ -1480,8 +1549,12 @@ const styles = StyleSheet.create({
   actionsOrbit: {
     width: 300,
     height: 300,
-    marginTop: 6,
-    marginBottom: 4,
+    // Each diamond is rotated 45deg, so its corner overhangs the orbit bounds
+    // by ~22px on every side. Add vertical clearance so the top tip never
+    // overlaps the profile card above (and the bottom tip clears the status
+    // text / ad banner below).
+    marginTop: 30,
+    marginBottom: 26,
     alignItems: "center",
     justifyContent: "center",
   },

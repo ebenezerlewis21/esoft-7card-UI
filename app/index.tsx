@@ -610,6 +610,10 @@ export default function HomeScreen(): React.ReactElement {
         });
 
         if (!response.ok) {
+          const requestReference =
+            response.headers.get("rndr-id") ??
+            response.headers.get("x-request-id") ??
+            null;
           if (response.status === 400) {
             setForgotPasswordErrorMessage(
               "Invalid email format for password reset.",
@@ -624,7 +628,9 @@ export default function HomeScreen(): React.ReactElement {
             );
           } else if (response.status >= 500) {
             setForgotPasswordErrorMessage(
-              "Server error while sending reset link. Please try again.",
+              requestReference
+                ? `Server error while sending reset link. Ref: ${requestReference}`
+                : "Server error while sending reset link. Please try again.",
             );
           } else {
             setForgotPasswordErrorMessage(

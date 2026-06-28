@@ -311,6 +311,17 @@ const writeCurrentUserProfileFromBackend = async (payload: {
       ...getDefaultProfileForName(trimmedName),
     } as UserProfile);
 
+  const backendBalance = Number.isFinite(payload.balance)
+    ? Math.max(0, Math.floor(payload.balance as number))
+    : null;
+  const starterCoins = DEFAULT_SIGNUP_PROFILE.coins;
+  const shouldPreserveStarterCoins =
+    currentProfile.gamesPlayed === DEFAULT_SIGNUP_PROFILE.gamesPlayed &&
+    currentProfile.wins === DEFAULT_SIGNUP_PROFILE.wins &&
+    currentProfile.rank === DEFAULT_SIGNUP_PROFILE.rank &&
+    currentProfile.coins === starterCoins &&
+    (backendBalance === null || backendBalance <= 0);
+
   const nextProfile: UserProfile = {
     ...currentProfile,
     name:
@@ -327,9 +338,9 @@ const writeCurrentUserProfileFromBackend = async (payload: {
     gamesPlayed: Number.isFinite(payload.gamesPlayed)
       ? Math.max(0, Math.floor(payload.gamesPlayed as number))
       : currentProfile.gamesPlayed,
-    coins: Number.isFinite(payload.balance)
-      ? Math.max(0, Math.floor(payload.balance as number))
-      : currentProfile.coins,
+    coins: shouldPreserveStarterCoins
+      ? starterCoins
+      : (backendBalance ?? currentProfile.coins),
   };
 
   await writeProfileMap({
@@ -767,6 +778,92 @@ export const awardCurrentUserCredits = async (
     });
 
     return nextCoins;
+  } catch {
+    return null;
+  }
+};
+
+// Award ad credits to the current user. Fractional rewards are applied locally,
+// and whenever the updated balance crosses a whole-credit boundary, that whole
+// amount is also sent to backend balance storage.
+export const awardCurrentUserAdCredits = async (
+  amount: number,
+): Promise<number | null> => {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  try {
+    const name = await AsyncStorage.getItem(CURRENT_USER_KEY);
+    if (!name) return null;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return null;
+
+    const profiles = await readProfileMap();
+    const currentProfile =
+      profiles[trimmedName] ??
+      ({
+        name: trimmedName,
+        ...getDefaultProfileForName(trimmedName),
+      } as UserProfile);
+
+    const currentCoins = Math.max(0, currentProfile.coins);
+    const nextCoins = Math.max(0, currentCoins + amount);
+    const wholeCreditsEarned = Math.max(
+      0,
+      Math.floor(nextCoins) - Math.floor(currentCoins),
+    );
+
+    const nextProfile: UserProfile = {
+      ...currentProfile,
+      coins: nextCoins,
+    };
+
+    await writeProfileMap({
+      ...profiles,
+      [trimmedName]: nextProfile,
+    });
+
+    if (wholeCreditsEarned < 1) {
+      return nextCoins;
+    }
+
+    const apiUrl = resolveApiUrl("api/users/stats/balance/add");
+    const email = await getCurrentEmail();
+    if (!apiUrl || !email) {
+      return nextCoins;
+    }
+
+    try {
+      const response = await fetchWithAuth(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          amount: wholeCreditsEarned,
+        }),
+      });
+
+      if (!response.ok) {
+        return nextCoins;
+      }
+
+      const payload = (await response.json()) as {
+        name?: string;
+        rank?: string;
+        gamesPlayed?: number;
+        gamesWon?: number;
+        balance?: number;
+      };
+
+      const syncedProfile = await writeCurrentUserProfileFromBackend(payload);
+      return syncedProfile?.coins ?? nextCoins;
+    } catch {
+      return nextCoins;
+    }
   } catch {
     return null;
   }

@@ -67,6 +67,7 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   Vibration,
   View,
 } from "react-native";
@@ -151,6 +152,9 @@ function createOnlineDisplayState(
     (player) => player.playerId === game.currentTurnPlayerId,
   );
   const displayTurn = Math.max(0, displayOrder.indexOf(currentTurnIndex));
+  const viewerIsCurrentTurn = viewerIndex === currentTurnIndex;
+  const visibleDrawnCard =
+    game.drawnFrom === "discard" || viewerIsCurrentTurn ? game.drawnCard : null;
   const displayPlayers: Player[] = displayOrder.map((playerIndex, index) => {
     const player = game.players[playerIndex];
     return {
@@ -168,7 +172,7 @@ function createOnlineDisplayState(
     players: displayPlayers,
     turn: displayTurn,
     phase: game.phase,
-    drawnCard: game.drawnCard,
+    drawnCard: visibleDrawnCard,
     drawnFrom: game.drawnFrom,
     selectedHandIdx: null,
     movingCardIdx: null,
@@ -223,6 +227,27 @@ export default function GameScreen(): React.ReactElement {
     bet?: string;
   }>();
   const insets = useSafeAreaInsets();
+  // On shorter landscape boards (small phones) the rotated Player 2/3 hands
+  // drift down toward the player's hand. Scale the opponents down as the board
+  // gets shorter so the player's view keeps a clear safe area around it. The
+  // landscape height is the smaller window dimension.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const boardHeight = Math.min(windowWidth, windowHeight);
+  const opponentScale =
+    boardHeight >= 440 ? 1 : Math.max(0.78, boardHeight / 440);
+  const opponentWrapperMinWidth =
+    boardHeight < 390 ? 132 : boardHeight < 430 ? 148 : 164;
+  const opponentWrapperWidth =
+    boardHeight < 390 ? "33%" : boardHeight < 430 ? "35%" : "36%";
+  const opponentRotationDeg =
+    boardHeight < 390 ? 14 : boardHeight < 430 ? 16 : 22;
+  const player2TranslateX = boardHeight < 390 ? 3 : boardHeight < 430 ? 2 : -8;
+  const player3TranslateX = -player2TranslateX;
+  const centerPanelWidth = boardHeight < 390 ? "22%" : "24%";
+  const player2TightCompact = boardHeight < 430;
+  const player3TightCompact = boardHeight < 430;
+  const floatingActionBottom =
+    boardHeight >= 520 ? 108 : boardHeight >= 460 ? 124 : 150;
   const onlineMatchId =
     typeof params.matchId === "string" ? params.matchId : undefined;
   const onlinePlayerId =
@@ -352,6 +377,21 @@ export default function GameScreen(): React.ReactElement {
     keepAudioSessionActive: true,
   });
   const swapAudioStatus = useAudioPlayerStatus(swapAudio);
+
+  // Mirror the volatile sound/audio-loaded values into refs so the shuffle
+  // animation callback can stay referentially stable. Otherwise the audio
+  // status churning (notably on Android, where the clip loads slower and the
+  // player status updates as each pass replays) recreates the callback, which
+  // re-runs the start effect, clears the pending "done" timer, and restarts the
+  // shuffle — leaving it spinning forever.
+  const soundEnabledRef = useRef(soundEnabled);
+  const shuffleAudioLoadedRef = useRef(shuffleAudioStatus.isLoaded);
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+  useEffect(() => {
+    shuffleAudioLoadedRef.current = shuffleAudioStatus.isLoaded;
+  }, [shuffleAudioStatus.isLoaded]);
 
   useEffect(() => {
     shuffleAudio.volume = soundEnabled ? 0.95 : 0;
@@ -630,7 +670,7 @@ export default function GameScreen(): React.ReactElement {
     setAnimatedCards([]);
 
     try {
-      if (soundEnabled && shuffleAudioStatus.isLoaded) {
+      if (soundEnabledRef.current && shuffleAudioLoadedRef.current) {
         shuffleAudio.seekTo(0);
         shuffleAudio.play();
       }
@@ -654,7 +694,7 @@ export default function GameScreen(): React.ReactElement {
       const spawnTimer = setTimeout(() => {
         if (shuffleRunIdRef.current !== runId) return;
         try {
-          if (soundEnabled && shuffleAudioStatus.isLoaded) {
+          if (soundEnabledRef.current && shuffleAudioLoadedRef.current) {
             shuffleAudio.setPlaybackRate(
               SHUFFLE_AUDIO_BASE_RATE + (i % 3) * 0.02,
             );
@@ -731,13 +771,7 @@ export default function GameScreen(): React.ReactElement {
       revealStartDelay + 7 * HAND_REVEAL_STAGGER_MS,
     );
     shuffleTimersRef.current.push(doneTimer);
-  }, [
-    clearShuffleTimers,
-    soundEnabled,
-    shuffleAudio,
-    shuffleAudioStatus.isLoaded,
-    stopShuffleAudio,
-  ]);
+  }, [clearShuffleTimers, shuffleAudio, stopShuffleAudio]);
 
   useEffect(() => {
     if (isOnlineMode) {
@@ -1081,6 +1115,7 @@ export default function GameScreen(): React.ReactElement {
               {
                 id: incomingAnimId,
                 card: incomingCard,
+                faceDown: incomingSource === "deck",
                 fromX: sourceX,
                 fromY: sourceY,
                 toX: handTargetX,
@@ -1969,10 +2004,15 @@ export default function GameScreen(): React.ReactElement {
 
   return (
     <SafeAreaView
-      edges={["top", "bottom", "left", "right"]}
+      // The game runs full-screen in landscape with the status bar hidden, so
+      // there is no top bar/notch to avoid (cutouts sit on the left/right in
+      // landscape). Insetting the top here on Android (edge-to-edge) stole
+      // ~status-bar height and pushed the bottom hand + legend off-screen.
+      edges={["left", "right"]}
       style={[styles.safe, { backgroundColor: activeBackground.background }]}
     >
       <StatusBar
+        hidden
         barStyle="light-content"
         backgroundColor={activeBackground.background}
       />
@@ -2082,7 +2122,18 @@ export default function GameScreen(): React.ReactElement {
             }}
           >
             <View
-              style={styles.player2Wrapper}
+              style={[
+                styles.player2Wrapper,
+                {
+                  width: opponentWrapperWidth,
+                  minWidth: opponentWrapperMinWidth,
+                  transform: [
+                    { translateX: player2TranslateX },
+                    { rotate: `-${opponentRotationDeg}deg` },
+                    { scale: opponentScale },
+                  ],
+                },
+              ]}
               onLayout={(event) => {
                 player2WrapperRef.current = event.nativeEvent.layout;
               }}
@@ -2098,13 +2149,14 @@ export default function GameScreen(): React.ReactElement {
                 score={calcHandScore(players[1].cards)}
                 gameOver={gameOver}
                 compact
+                tightCompact={player2TightCompact}
                 showThinking={!isOnlineMode}
                 containerStyle={styles.player2HandCurve}
               />
             </View>
 
             <View
-              style={styles.centerPanel}
+              style={[styles.centerPanel, { width: centerPanelWidth }]}
               onLayout={(event) => {
                 centerPanelOriginRef.current = event.nativeEvent.layout;
               }}
@@ -2112,7 +2164,11 @@ export default function GameScreen(): React.ReactElement {
               <CenterZone
                 deckCount={deck.length}
                 discardTop={discardTop}
-                drawnCard={isMyTurn && phase === "drawn" ? drawnCard : null}
+                drawnCard={
+                  phase === "drawn" && (isMyTurn || drawnFrom === "discard")
+                    ? drawnCard
+                    : null
+                }
                 drawnFrom={drawnFrom}
                 cardBackColor={sharedCardBackColor}
                 canDrawDeck={
@@ -2141,7 +2197,18 @@ export default function GameScreen(): React.ReactElement {
             </View>
 
             <View
-              style={styles.player3Wrapper}
+              style={[
+                styles.player3Wrapper,
+                {
+                  width: opponentWrapperWidth,
+                  minWidth: opponentWrapperMinWidth,
+                  transform: [
+                    { translateX: player3TranslateX },
+                    { rotate: `${opponentRotationDeg}deg` },
+                    { scale: opponentScale },
+                  ],
+                },
+              ]}
               onLayout={(event) => {
                 player3WrapperRef.current = event.nativeEvent.layout;
               }}
@@ -2157,6 +2224,7 @@ export default function GameScreen(): React.ReactElement {
                 score={calcHandScore(players[2].cards)}
                 gameOver={gameOver}
                 compact
+                tightCompact={player3TightCompact}
                 showThinking={!isOnlineMode}
                 containerStyle={styles.player3HandCurve}
               />
@@ -2198,19 +2266,6 @@ export default function GameScreen(): React.ReactElement {
             />
           </View>
 
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#4ae" }]} />
-              <Text3D style={styles.legendText}>Zero-value combo</Text3D>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[styles.legendDot, { backgroundColor: "#ffffff" }]}
-              />
-              <Text3D style={styles.legendText}>Selected card</Text3D>
-            </View>
-          </View>
-
           {animatedCards.map((ac) => (
             <AnimatedCard
               key={ac.id}
@@ -2235,6 +2290,7 @@ export default function GameScreen(): React.ReactElement {
               style={[
                 styles.floatingActionButton,
                 styles.primaryFloatingAction,
+                { bottom: floatingActionBottom },
                 phase === "drawn" && drawnCard
                   ? styles.floatingKeepButton
                   : styles.stopGameButton,
@@ -2561,26 +2617,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
   },
-  legend: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 16,
-    paddingBottom: 4,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 10,
-  },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2597,6 +2633,7 @@ const styles = StyleSheet.create({
     maxWidth: 620,
     alignSelf: "center",
     marginTop: "auto",
+    marginBottom: 8,
   },
   player2Wrapper: {
     width: "36%",
