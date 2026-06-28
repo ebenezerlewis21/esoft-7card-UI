@@ -63,55 +63,57 @@ export default function InfoScreen(): React.ReactElement {
           { backgroundColor: appTheme.colors.panelBackground },
         ]}
       >
-        <Text3D style={styles.title}>How To Play</Text3D>
+        <Text3D style={styles.title} animate={false}>
+          How To Play
+        </Text3D>
 
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text3D style={styles.sectionTitle}>Game Rules</Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.sectionTitle} animate={false}>Game Rules</Text3D>
+          <Text3D style={styles.bodyText} animate={false}>
             Build the lowest 7-card hand score you can. Lower cards are better,
             and you should avoid pairs or repeats when possible.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             When points are counted, no card value can exceed 10. J, Q, and K
             all count as 10 points each.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             On your turn, draw from deck or discard, then choose one card to
             keep and one card to discard.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             A round ends when someone stops. Scores are compared and the lowest
             total wins the round.
           </Text3D>
 
-          <Text3D style={styles.sectionTitle}>Reduce Points With Combos</Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.sectionTitle} animate={false}>Reduce Points With Combos</Text3D>
+          <Text3D style={styles.bodyText} animate={false}>
             Three or more cards of the same rank score 0 points together. For
             example, three 7s or four Kings can cancel out those cards.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             Three or more cards of the same suit can also score 0 if they form a
             sequence. That works for both low runs like A-2-3 and high runs like
             Q-K-A.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             The game automatically keeps the best non-overlapping combinations,
             so the more matching cards and runs you build, the lower your hand
             score becomes.
           </Text3D>
 
-          <Text3D style={styles.sectionTitle}>Stats Explained</Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.sectionTitle} animate={false}>Stats Explained</Text3D>
+          <Text3D style={styles.bodyText} animate={false}>
             Games Played: Total finished matches.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             Win Ratio: Percent of matches won.
           </Text3D>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             Ranked: Your current competitive tier.
           </Text3D>
           <View style={styles.rankIconRow}>
@@ -121,7 +123,7 @@ export default function InfoScreen(): React.ReactElement {
               ),
             )}
           </View>
-          <Text3D style={styles.bodyText}>
+          <Text3D style={styles.bodyText} animate={false}>
             Each tier holds 100 players. If a tier is full and you move up, you
             replace the lowest-ranked player in that tier and they move down.
           </Text3D>
@@ -132,7 +134,7 @@ export default function InfoScreen(): React.ReactElement {
               size={16}
               color="#f6d43a"
             />
-            <Text3D style={styles.bodyText}>
+            <Text3D style={styles.bodyText} animate={false}>
               Coins: Currency earned from wins and performance. Coins are not
               earned when playing against the computer.
             </Text3D>
@@ -144,7 +146,9 @@ export default function InfoScreen(): React.ReactElement {
           activeOpacity={0.85}
           onPress={() => router.back()}
         >
-          <Text3D style={styles.buttonText}>Back</Text3D>
+          <Text3D style={styles.buttonText} animate={false}>
+            Back
+          </Text3D>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

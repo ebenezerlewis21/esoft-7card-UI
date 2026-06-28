@@ -3,35 +3,35 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    Animated,
-    KeyboardAvoidingView,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GoogleAdMobBanner from "../components/GoogleAdMobBanner";
 import Text3D from "../components/Text3D";
 import {
-    type AuthCredential,
-    clearAuthCredential,
-    clearCurrentEmail,
-    clearCurrentName,
-    clearGuestSession,
-    ensureUserProfile,
-    isGuestSession,
-    resolveApiUrl,
-    setAuthCredential,
-    setCurrentEmail,
-    setCurrentName,
-    setGuestSession,
+  type AuthCredential,
+  clearAuthCredential,
+  clearCurrentEmail,
+  clearCurrentName,
+  clearGuestSession,
+  ensureUserProfile,
+  isGuestSession,
+  resolveApiUrl,
+  setAuthCredential,
+  setCurrentEmail,
+  setCurrentName,
+  setGuestSession,
 } from "../constants/auth";
 
 type ThirdPartyProvider = "google" | "apple" | "facebook";
@@ -610,6 +610,10 @@ export default function HomeScreen(): React.ReactElement {
         });
 
         if (!response.ok) {
+          const requestReference =
+            response.headers.get("rndr-id") ??
+            response.headers.get("x-request-id") ??
+            null;
           if (response.status === 400) {
             setForgotPasswordErrorMessage(
               "Invalid email format for password reset.",
@@ -624,7 +628,9 @@ export default function HomeScreen(): React.ReactElement {
             );
           } else if (response.status >= 500) {
             setForgotPasswordErrorMessage(
-              "Server error while sending reset link. Please try again.",
+              requestReference
+                ? `Server error while sending reset link. Ref: ${requestReference}`
+                : "Server error while sending reset link. Please try again.",
             );
           } else {
             setForgotPasswordErrorMessage(
